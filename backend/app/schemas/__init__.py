@@ -19,6 +19,13 @@ from app.schemas.delivery import (
 from app.schemas.vehicle import (
     VehicleCreate, VehicleUpdate, VehicleResponse, VehicleListResponse
 )
+from app.schemas.auth import (
+    Token, TokenPayload, RefreshTokenRequest,
+    UserCreate, UserCreateByAdmin, UserUpdate, UserUpdatePassword,
+    UserResponse, UserListResponse,
+    LoginRequest, LoginResponse,
+    RegisterRequest, RegisterResponse,
+)
 
 __all__ = [
     # Agent
@@ -34,4 +41,10 @@ __all__ = [
     "DeliveryOrderResponse",
     # Vehicle
     "VehicleCreate", "VehicleUpdate", "VehicleResponse", "VehicleListResponse",
+    # Auth
+    "Token", "TokenPayload", "RefreshTokenRequest",
+    "UserCreate", "UserCreateByAdmin", "UserUpdate", "UserUpdatePassword",
+    "UserResponse", "UserListResponse",
+    "LoginRequest", "LoginResponse",
+    "RegisterRequest", "RegisterResponse",
 ]

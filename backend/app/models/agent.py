@@ -16,6 +16,7 @@ from app.models.base import TimestampMixin, UUIDMixin
 if TYPE_CHECKING:
     from app.models.client import Client
     from app.models.visit_plan import VisitPlan
+    from app.models.user import User
 
 
 class Agent(Base, UUIDMixin, TimestampMixin):
@@ -96,6 +97,11 @@ class Agent(Base, UUIDMixin, TimestampMixin):
         "VisitPlan",
         back_populates="agent",
         lazy="selectin",
+    )
+    user: Mapped[Optional["User"]] = relationship(
+        "User",
+        back_populates="agent",
+        uselist=False,
     )
 
     def __repr__(self) -> str:

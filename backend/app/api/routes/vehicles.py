@@ -9,7 +9,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import get_current_user, get_dispatcher_user
 from app.models.vehicle import Vehicle
+from app.models.user import User
 from app.schemas.vehicle import (
     VehicleCreate,
     VehicleUpdate,
@@ -26,6 +28,7 @@ async def list_vehicles(
     size: int = Query(20, ge=1, le=100),
     is_active: Optional[bool] = Query(None),
     search: Optional[str] = Query(None, description="Search by name or license plate"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VehicleListResponse:
     """Get list of vehicles with pagination."""
@@ -62,6 +65,7 @@ async def list_vehicles(
 @router.get("/{vehicle_id}", response_model=VehicleResponse)
 async def get_vehicle(
     vehicle_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VehicleResponse:
     """Get vehicle by ID."""
@@ -77,6 +81,7 @@ async def get_vehicle(
 @router.post("", response_model=VehicleResponse, status_code=201)
 async def create_vehicle(
     data: VehicleCreate,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> VehicleResponse:
     """Create a new vehicle."""
@@ -102,6 +107,7 @@ async def create_vehicle(
 async def update_vehicle(
     vehicle_id: UUID,
     data: VehicleUpdate,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> VehicleResponse:
     """Update a vehicle."""
@@ -139,6 +145,7 @@ async def update_vehicle(
 @router.delete("/{vehicle_id}", status_code=204)
 async def delete_vehicle(
     vehicle_id: UUID,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete a vehicle."""
