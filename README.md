@@ -19,6 +19,11 @@ A microservice for optimizing routes for field sales representatives (SFA) and d
 - **Time Windows**: Delivery time window constraints
 - **Priority Handling**: Order priority-based optimization
 
+### Export & Integration
+- **PDF Export**: Export daily/weekly plans and delivery routes to PDF
+- **Smartup ERP Integration**: Sync agents, clients, orders with Smartup ERP
+- **RESTful API**: Full API for mobile app and third-party integrations
+
 ## Tech Stack
 
 ### Backend
@@ -138,6 +143,11 @@ npm run dev
 - `GET /api/v1/clients` - List clients
 - `GET /api/v1/vehicles` - List vehicles
 
+### Export API
+- `GET /api/v1/export/daily-plan/{agent_id}/{date}` - Export daily plan to PDF
+- `GET /api/v1/export/weekly-plan/{agent_id}/{date}` - Export weekly plan to PDF
+- `GET /api/v1/export/delivery-route/{route_id}` - Export delivery route to PDF
+
 ## Configuration
 
 Environment variables:
@@ -156,6 +166,36 @@ Environment variables:
 cd backend
 pytest
 ```
+
+## Test Data Generation
+
+Generate realistic test data for Tashkent:
+
+```bash
+cd backend
+python scripts/generate_test_data.py
+```
+
+This creates:
+- 10 agents
+- 300 clients (20% A, 50% B, 30% C categories)
+- 5 vehicles
+- 100 sample delivery orders
+
+## Performance Testing
+
+Run performance benchmarks:
+
+```bash
+cd backend
+python scripts/performance_test.py
+```
+
+Success criteria:
+- Weekly plan generation: < 30 seconds
+- Delivery optimization (100 points): < 10 seconds
+- Mileage reduction: 15-20% vs manual
+- Load balance: ±10% across days
 
 ## OSRM Setup for Uzbekistan
 
