@@ -419,3 +419,132 @@ async def get_route(
         created_at=route.created_at,
         updated_at=route.updated_at,
     )
+
+
+@router.post("/routes/{route_id}/reoptimize", response_model=DeliveryRouteResponse)
+async def reoptimize_route(
+    route_id: UUID,
+    current_user: User = Depends(get_dispatcher_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Re-optimize an existing route.
+    
+    Useful when orders are added/removed or traffic changes.
+    Currently only supports routes that haven't started (status=PLANNED).
+    """
+    # Fetch route
+    result = await db.execute(
+        select(DeliveryRoute)
+        .options(
+            selectinload(DeliveryRoute.vehicle),
+            selectinload(DeliveryRoute.stops).selectinload(DeliveryRouteStop.order).selectinload(DeliveryOrder.client),
+        )
+        .where(DeliveryRoute.id == route_id)
+    )
+    route = result.scalar_one_or_none()
+    
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+        
+    if route.status != RouteStatus.PLANNED:
+        raise HTTPException(status_code=400, detail="Can only reoptimize PLANNED routes")
+
+    # Collect orders and vehicle
+    orders = [stop.order for stop in route.stops]
+    vehicle = route.vehicle
+    
+    # Re-run optimization
+    clients_map = {o.client_id: o.client for o in orders if o.client}
+    
+    opt_result = await route_optimizer.optimize(
+        orders=orders,
+        vehicles=[vehicle],
+        clients_map=clients_map,
+        route_date=route.route_date
+    )
+    
+    if not opt_result.routes:
+        raise HTTPException(status_code=400, detail="Optimization failed to produce a route")
+        
+    new_opt_route = opt_result.routes[0]
+    
+    # Update Route details
+    route.total_distance_km = Decimal(str(new_opt_route.total_distance_km))
+    route.total_duration_minutes = new_opt_route.total_duration_minutes
+    route.total_weight_kg = Decimal(str(new_opt_route.total_weight_kg))
+    route.geometry = new_opt_route.geometry
+    route.planned_start = new_opt_route.planned_start
+    route.planned_end = new_opt_route.planned_end
+    route.updated_at = datetime.utcnow()
+    
+    # Replace Stops
+    # Delete old stops
+    for stop in route.stops:
+        await db.delete(stop)
+    
+    route.stops = [] # Clear relationship
+    
+    # Create new stops
+    stops_response = []
+    order_map = {o.id: o for o in orders}
+    
+    for stop in new_opt_route.stops:
+        order = order_map.get(stop.order_id)
+        client = clients_map.get(stop.client_id)
+        
+        new_stop = DeliveryRouteStop(
+            route_id=route.id,
+            order_id=stop.order_id,
+            sequence_number=stop.sequence_number,
+            distance_from_previous_km=Decimal(str(stop.distance_from_previous_km)),
+            duration_from_previous_minutes=stop.duration_from_previous_minutes,
+            planned_arrival=stop.planned_arrival,
+            planned_departure=stop.planned_departure,
+        )
+        db.add(new_stop)
+        
+        stops_response.append(DeliveryRouteStopResponse(
+            id=new_stop.id, # Warning: ID won't be available until flush/commit
+            order_id=stop.order_id,
+            order_external_id=order.external_id if order else None,
+            client_id=stop.client_id,
+            client_name=stop.client_name,
+            client_address=client.address if client else "",
+            sequence_number=stop.sequence_number,
+            distance_from_previous_km=stop.distance_from_previous_km,
+            duration_from_previous_minutes=stop.duration_from_previous_minutes,
+            planned_arrival=stop.planned_arrival,
+            planned_departure=stop.planned_departure,
+            actual_arrival=None,
+            actual_departure=None,
+            latitude=stop.latitude,
+            longitude=stop.longitude,
+            weight_kg=stop.weight_kg,
+        ))
+
+    await db.commit()
+    await db.refresh(route)
+    
+    # Return updated route
+    return DeliveryRouteResponse(
+        id=route.id,
+        vehicle_id=route.vehicle_id,
+        vehicle_name=route.vehicle.name,
+        vehicle_license_plate=route.vehicle.license_plate,
+        route_date=route.route_date,
+        total_distance_km=float(route.total_distance_km),
+        total_duration_minutes=route.total_duration_minutes,
+        total_weight_kg=float(route.total_weight_kg),
+        total_stops=len(stops_response),
+        status=route.status,
+        planned_start=route.planned_start,
+        planned_end=route.planned_end,
+        actual_start=route.actual_start,
+        actual_end=route.actual_end,
+        stops=stops_response,
+        geometry=route.geometry,
+        notes=route.notes,
+        created_at=route.created_at,
+        updated_at=route.updated_at,
+    )

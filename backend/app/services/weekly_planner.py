@@ -22,7 +22,18 @@ from app.models.client import Client, ClientCategory
 from app.models.visit_plan import VisitPlan, VisitStatus
 from app.services.osrm_client import OSRMClient, osrm_client
 from app.services.vroom_solver import VROOMSolver, vroom_solver
-from app.services.solver_interface import RegionalConstraints, RegionalConfig
+from app.services.solver_interface import (
+    RegionalConstraints,
+    RegionalConfig,
+    SolverFactory,
+    SolverType,
+    RoutingProblem,
+    VehicleConfig,
+    Job,
+    Location,
+    TransportMode,
+    Break,
+)
 
 
 @dataclass
@@ -250,17 +261,22 @@ class WeeklyPlanner:
 
         return visits_needed
 
-    def cluster_by_geography(
+    async def cluster_by_geography(
         self,
         clients: list[Client],
         n_clusters: int = 5,
+        use_osrm: bool = True,
     ) -> dict[int, list[Client]]:
         """
         Cluster clients by geographic proximity.
 
+        Uses OSRM road distances for accurate clustering
+        that considers actual road network, not just Euclidean distance.
+
         Args:
             clients: List of clients
             n_clusters: Number of clusters (days)
+            use_osrm: Whether to use OSRM distances (slower but more accurate)
 
         Returns:
             Dict mapping cluster_id to list of clients
@@ -268,13 +284,34 @@ class WeeklyPlanner:
         if len(clients) < n_clusters:
             return {0: clients}
 
-        # Prepare coordinates
+        # Try OSRM-based hierarchical clustering
+        if use_osrm:
+            try:
+                from app.services.clustering import clustering_service
+                
+                result = await clustering_service.cluster_hierarchical_osrm(
+                    clients,
+                    n_clusters=n_clusters,
+                    use_cache=True,
+                )
+                
+                # Map indices back to clients
+                clusters: dict[int, list[Client]] = {}
+                for cluster_id, indices in result.clusters.items():
+                    clusters[cluster_id] = [clients[i] for i in indices]
+                
+                return clusters
+                
+            except Exception as e:
+                # Log error and fallback to K-means
+                print(f"OSRM clustering failed, falling back to K-means: {e}")
+
+        # Fallback: K-means with Euclidean distance
         coords = np.array([
             [float(c.latitude), float(c.longitude)]
             for c in clients
         ])
 
-        # K-means clustering
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         labels = kmeans.fit_predict(coords)
 
@@ -287,7 +324,7 @@ class WeeklyPlanner:
 
         return clusters
 
-    def assign_to_days(
+    async def assign_to_days(
         self,
         clients: list[Client],
         visits_needed: dict[uuid.UUID, int],
@@ -298,7 +335,7 @@ class WeeklyPlanner:
         Assign clients to specific days of the week.
 
         Strategy:
-        1. Cluster clients geographically
+        1. Cluster clients geographically using OSRM distances
         2. Assign clusters to days
         3. Handle A-class clients (2 visits) by splitting across days
         4. Balance load across days
@@ -312,8 +349,8 @@ class WeeklyPlanner:
         Returns:
             Dict mapping day_index (0-4) to list of clients
         """
-        # First, cluster geographically
-        clusters = self.cluster_by_geography(clients, n_clusters=n_days)
+        # First, cluster geographically using OSRM
+        clusters = await self.cluster_by_geography(clients, n_clusters=n_days)
 
         # Initialize daily assignments
         daily_assignments: dict[int, list[Client]] = {
@@ -373,7 +410,7 @@ class WeeklyPlanner:
         client_priorities: Optional[dict[uuid.UUID, float]] = None,
     ) -> DailyPlan:
         """
-        Optimize route for a single day using VROOM.
+        Optimize route for a single day using SolverFactory (defaulting to VROOM).
 
         Args:
             agent: Agent for the route
@@ -395,126 +432,124 @@ class WeeklyPlanner:
         # Get adjusted work hours
         work_start = self.get_adjusted_work_start(agent, route_date)
         is_friday = route_date.weekday() == 4
+        
+        # Define breaks
+        breaks = []
+        
+        # Lunch break
+        lunch_start_time = self.constraints.lunch_break_start
+        lunch_end_time = self.constraints.lunch_break_end
+        breaks.append(Break(
+            id=1,
+            start=lunch_start_time,
+            end=lunch_end_time,
+            description="Lunch Break",
+            duration_minutes=60, # Approximation if dates needed
+        ))
 
-        # Build time windows avoiding lunch break and Friday prayer
-        def get_client_time_windows(client: Client) -> list[list[int]]:
-            """Get valid time windows for a client, avoiding restricted periods."""
-            windows = []
+        # Friday prayer (Uzbekistan)
+        if is_friday and self.region == RegionalConfig.UZBEKISTAN:
+            if self.constraints.friday_prayer_start:
+                breaks.append(Break(
+                    id=2,
+                    start=self.constraints.friday_prayer_start,
+                    end=self.constraints.friday_prayer_end,
+                    description="Friday Prayer",
+                    duration_minutes=90,
+                ))
 
-            # Default client hours
-            client_start = client.time_window_start or work_start
-            client_end = client.time_window_end or agent.work_end
+        # Build VehicleConfig
+        start_loc = Location(
+            id=uuid.uuid4(),
+            name="Depot",
+            latitude=float(agent.start_latitude),
+            longitude=float(agent.start_longitude),
+        )
+        end_loc = None
+        if agent.end_latitude and agent.end_longitude:
+            end_loc = Location(
+                id=uuid.uuid4(),
+                name="End",
+                latitude=float(agent.end_latitude),
+                longitude=float(agent.end_longitude)
+            )
 
-            start_sec = self._time_to_seconds(client_start)
-            end_sec = self._time_to_seconds(client_end)
+        vehicle = VehicleConfig(
+            id=agent.id,
+            name=agent.name,
+            capacity_kg=1000, # Dummy capacity for sales agent
+            start_location=start_loc,
+            end_location=end_loc,
+            work_start=work_start,
+            work_end=agent.work_end,
+            breaks=breaks,
+        )
 
-            # Lunch break
-            lunch_start = self._time_to_seconds(self.constraints.lunch_break_start)
-            lunch_end = self._time_to_seconds(self.constraints.lunch_break_end)
+        # Build Jobs
+        jobs = []
+        clients_map = {c.id: c for c in clients}
+        
+        for idx, client in enumerate(clients):
+            priority = 50
+            if client_priorities:
+                priority = int(client_priorities.get(client.id, 50))
+            
+            # Use client time window if available, else work hours
+            # Note: We rely on Breaks to handle lunch exclusions
+            tw_start = datetime.combine(route_date, client.time_window_start or work_start)
+            tw_end = datetime.combine(route_date, client.time_window_end or agent.work_end)
 
-            # Friday prayer (Uzbekistan)
-            prayer_start = None
-            prayer_end = None
-            if is_friday and self.region == RegionalConfig.UZBEKISTAN:
-                if self.constraints.friday_prayer_start:
-                    prayer_start = self._time_to_seconds(self.constraints.friday_prayer_start)
-                    prayer_end = self._time_to_seconds(self.constraints.friday_prayer_end)
+            jobs.append(Job(
+                id=client.id, # Use Client UUID as Job ID
+                location=Location(
+                    id=uuid.uuid4(),
+                    name=client.name,
+                    latitude=float(client.latitude),
+                    longitude=float(client.longitude),
+                    service_time_minutes=client.visit_duration_minutes,
+                ),
+                priority=priority,
+                time_window_start=tw_start,
+                time_window_end=tw_end,
+            ))
 
-            # Split time window around restricted periods
-            if start_sec < lunch_start:
-                windows.append([start_sec, min(lunch_start, end_sec)])
+        # Create Problem
+        problem = RoutingProblem(
+            jobs=jobs,
+            vehicles=[vehicle],
+            planning_date=route_date,
+            transport_mode=TransportMode.CAR, # Agents drive
+            regional_constraints=self.constraints,
+        )
 
-            if end_sec > lunch_end:
-                afternoon_start = max(lunch_end, start_sec)
-                windows.append([afternoon_start, end_sec])
-
-            # Further split for Friday prayer if applicable
-            if prayer_start and prayer_end:
-                new_windows = []
-                for w_start, w_end in windows:
-                    if w_end <= prayer_start or w_start >= prayer_end:
-                        new_windows.append([w_start, w_end])
-                    else:
-                        if w_start < prayer_start:
-                            new_windows.append([w_start, prayer_start])
-                        if w_end > prayer_end:
-                            new_windows.append([prayer_end, w_end])
-                windows = new_windows
-
-            # Fallback: use original window if all were removed
-            if not windows:
-                windows = [[start_sec, end_sec]]
-
-            return windows
-
-        # Prepare VROOM request
-        request_data = {
-            "vehicles": [{
-                "id": 0,
-                "start": [float(agent.start_longitude), float(agent.start_latitude)],
-                "end": [float(agent.end_longitude or agent.start_longitude),
-                        float(agent.end_latitude or agent.start_latitude)],
-                "time_window": [
-                    self._time_to_seconds(work_start),
-                    self._time_to_seconds(agent.work_end),
-                ],
-            }],
-            "jobs": [
-                {
-                    "id": idx,
-                    "location": [float(client.longitude), float(client.latitude)],
-                    "service": client.visit_duration_minutes * 60,
-                    "time_windows": get_client_time_windows(client),
-                    # Add priority as negative cost (higher priority = lower cost)
-                    "priority": int(client_priorities.get(client.id, 50) if client_priorities else 50),
-                }
-                for idx, client in enumerate(clients)
-            ],
-            "options": {"g": True},
-        }
-
+        # Solve
         try:
-            result = await self.vroom.solve_raw(request_data)
+            solution = await SolverFactory.solve_with_fallback(
+                problem,
+                preferred=SolverType.VROOM
+            )
         except Exception as e:
-            # Fallback: return clients in original order
-            return self._create_fallback_plan(agent, clients, route_date)
-
+            # Fallback
+             return self._create_fallback_plan(agent, clients, route_date)
+        
         # Parse result
         visits = []
-        total_distance_km = 0
-        total_duration_minutes = 0
-
-        # Lunch break times for checking
-        lunch_start = self._time_to_seconds(self.constraints.lunch_break_start)
-        lunch_end = self._time_to_seconds(self.constraints.lunch_break_end)
-
-        if result.get("routes"):
-            route = result["routes"][0]
-            total_distance_km = route.get("distance", 0) / 1000
-            total_duration_minutes = route.get("duration", 0) // 60
-
-            current_time = work_start
+        if solution.routes:
+            route = solution.routes[0]
+            
             sequence = 0
-
-            for step in route.get("steps", []):
-                if step["type"] == "job":
-                    job_idx = step["job"]
-                    client = clients[job_idx]
+            for step in route.steps:
+                if step.step_type == "job" and step.job_id: # job_id is client.id (UUID)
+                    client = clients_map.get(step.job_id)
+                    if not client:
+                        continue
+                        
                     sequence += 1
-
-                    arrival_seconds = step.get("arrival", 0)
-                    duration_from_prev = step.get("duration", 0)
-                    distance_from_prev = step.get("distance", 0)
-
-                    arrival_time = self._seconds_to_time(arrival_seconds)
-                    departure_time = self._seconds_to_time(
-                        arrival_seconds + client.visit_duration_minutes * 60
-                    )
-
-                    # Check if visit falls during lunch
+                    
+                    # Check lunch overlap
+                    arrival_time = step.arrival_time.time()
                     is_during_lunch = (
-                        lunch_start <= arrival_seconds <= lunch_end or
-                        lunch_start <= (arrival_seconds + client.visit_duration_minutes * 60) <= lunch_end
+                        lunch_start_time <= arrival_time <= lunch_end_time
                     )
 
                     visits.append(PlannedVisit(
@@ -522,23 +557,30 @@ class WeeklyPlanner:
                         client_name=client.name,
                         sequence_number=sequence,
                         planned_time=arrival_time,
-                        estimated_arrival=arrival_time,
-                        estimated_departure=departure_time,
-                        distance_from_previous_km=distance_from_prev / 1000,
-                        duration_from_previous_minutes=duration_from_prev // 60,
+                        estimated_arrival=step.arrival_time.time(),
+                        estimated_departure=step.departure_time.time(),
+                        distance_from_previous_km=step.distance_from_previous_m / 1000,
+                        duration_from_previous_minutes=int(step.duration_from_previous_s / 60),
                         latitude=float(client.latitude),
                         longitude=float(client.longitude),
                         priority_score=client_priorities.get(client.id, 0) if client_priorities else 0,
                         is_during_lunch=is_during_lunch,
-                        client_category=client.category.value if hasattr(client.category, 'value') else str(client.category),
+                        client_category=client.category if isinstance(client.category, str) else client.category.value,
                     ))
+
+            return DailyPlan(
+                date=route_date,
+                visits=visits,
+                total_distance_km=solution.total_distance_m / 1000,
+                total_duration_minutes=int(solution.total_duration_s / 60),
+                geometry={"encoded": route.geometry} if route.geometry else None,
+            )
 
         return DailyPlan(
             date=route_date,
-            visits=visits,
-            total_distance_km=total_distance_km,
-            total_duration_minutes=total_duration_minutes,
-            geometry=result.get("routes", [{}])[0].get("geometry"),
+            visits=[],
+            total_distance_km=0,
+            total_duration_minutes=0,
         )
 
     def _time_to_seconds(self, t: time) -> int:
@@ -640,8 +682,8 @@ class WeeklyPlanner:
             )
             client_priorities[client.id] = priority
 
-        # Assign to days (prioritized clients first)
-        daily_assignments = self.assign_to_days(
+        # Assign to days (prioritized clients first) using OSRM-based clustering
+        daily_assignments = await self.assign_to_days(
             clients_to_visit,
             visits_needed,
             n_days=5,

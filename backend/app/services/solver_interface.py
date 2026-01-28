@@ -53,6 +53,23 @@ class RegionalConfig(str, Enum):
     DEFAULT = "default"
 
 
+class TransportMode(str, Enum):
+    """Transport mode for routing."""
+    CAR = "car"
+    PEDESTRIAN = "foot"
+    BICYCLE = "bicycle"
+
+
+@dataclass
+class Break:
+    """Scheduled break for a vehicle/driver."""
+    id: int
+    start: Optional[time] = None
+    end: Optional[time] = None
+    description: str = ""
+    duration_minutes: int = 60 # Default duration if start/end not fixed
+
+
 @dataclass
 class RegionalConstraints:
     """Region-specific constraints for Central Asia markets."""
@@ -138,6 +155,7 @@ class VehicleConfig:
     end_location: Optional[Location] = None
     work_start: time = field(default_factory=lambda: time(8, 0))
     work_end: time = field(default_factory=lambda: time(20, 0))
+    breaks: list[Break] = field(default_factory=list)
     cost_per_km: float = 1.0
     fixed_cost: float = 0.0
 
@@ -313,6 +331,9 @@ class RoutingProblem:
     depot_location: Optional[Location] = None
     distance_matrix: Optional[list[list[int]]] = None
     duration_matrix: Optional[list[list[int]]] = None
+
+    # Transport configuration
+    transport_mode: TransportMode = TransportMode.CAR
 
     # Problem characteristics (for solver selection)
     has_time_windows: bool = False

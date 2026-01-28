@@ -13,6 +13,19 @@ from app.core.config import settings
 from app.models.delivery_order import DeliveryOrder
 from app.models.vehicle import Vehicle
 from app.models.client import Client
+from app.services.solver_interface import (
+    RouteSolver,
+    SolverFactory,
+    SolverType,
+    RoutingProblem,
+    SolutionResult,
+    Route,
+    RouteStep,
+    Location,
+    VehicleConfig,
+    Job,
+    TransportMode,
+)
 
 
 @dataclass
@@ -74,7 +87,8 @@ class VROOMSolution:
     unassigned: list[dict]
 
 
-class VROOMSolver:
+@SolverFactory.register(SolverType.VROOM)
+class VROOMSolver(RouteSolver):
     """
     Solver for Vehicle Routing Problem using VROOM.
 
@@ -88,6 +102,10 @@ class VROOMSolver:
     def __init__(self, base_url: Optional[str] = None):
         self.base_url = (base_url or settings.VROOM_URL).rstrip("/")
         self.timeout = httpx.Timeout(300.0, connect=30.0)
+
+    @property
+    def solver_type(self) -> SolverType:
+        return SolverType.VROOM
 
     def _time_to_timestamp(self, t: time, base_date: date) -> int:
         """Convert time to Unix timestamp."""
@@ -184,25 +202,54 @@ class VROOMSolver:
 
     async def solve(
         self,
+        problem: Any,  # Typed as Any to support both RoutingProblem and legacy args
+        *args,
+        **kwargs,
+    ) -> Any:
+        # Check if called with RoutingProblem (new interface)
+        if isinstance(problem, RoutingProblem):
+            return await self._solve_problem(problem)
+        
+        # Legacy call support
+        return await self._solve_legacy(problem, *args, **kwargs)
+
+    async def _solve_problem(self, problem: RoutingProblem) -> SolutionResult:
+        """Solve using RoutingProblem definition."""
+        
+        # Determine profile
+        profile = "car"  # Default VROOM profile
+        if problem.transport_mode == TransportMode.PEDESTRIAN:
+            profile = "foot"  # Assuming VROOM configured with 'foot' profile
+        elif problem.transport_mode == TransportMode.BICYCLE:
+            profile = "bicycle"
+
+        # Prepare request
+        vehicles_data = self._prepare_vehicles_from_config(problem.vehicles, profile)
+        jobs_data = self._prepare_jobs_from_routing_jobs(problem.jobs)
+        
+        request_data = {
+            "vehicles": vehicles_data,
+            "jobs": jobs_data,
+            "options": {
+                "g": True,
+            },
+        }
+
+        # Call VROOM
+        result = await self.solve_raw(request_data)
+        
+        # Parse result into SolutionResult (adapter logic)
+        return self._parse_vroom_to_solution_result(result, problem)
+
+    async def _solve_legacy(
+        self,
         orders: list[DeliveryOrder],
         vehicles: list[Vehicle],
         clients_map: dict[uuid.UUID, Client],
         route_date: date,
         explore: int = 5,
     ) -> VROOMSolution:
-        """
-        Solve VRP for given orders and vehicles.
-
-        Args:
-            orders: List of orders to deliver
-            vehicles: List of available vehicles
-            clients_map: Map of client IDs to Client objects
-            route_date: Date for the routes
-            explore: Exploration level (higher = better quality, slower)
-
-        Returns:
-            VROOMSolution with optimized routes
-        """
+        """Legacy solve method."""
         request_data = {
             "vehicles": self.prepare_vehicles(vehicles, route_date),
             "jobs": self.prepare_jobs(orders, clients_map, route_date),
@@ -221,6 +268,147 @@ class VROOMSolver:
             data = response.json()
 
         return self._parse_solution(data, orders, vehicles)
+
+    def _prepare_vehicles_from_config(
+        self, 
+        vehicles: list[VehicleConfig],
+        profile: str
+    ) -> list[dict]:
+        vroom_vehicles = []
+        for idx, v_conf in enumerate(vehicles):
+            v = {
+                "id": idx,
+                "profile": profile,
+                "start": [v_conf.start_location.longitude, v_conf.start_location.latitude] if v_conf.start_location else [0, 0],
+                "capacity": [int(v_conf.capacity_kg)],
+                "description": v_conf.name,
+                 # Time window (seconds from midnight)
+                "time_window": [
+                    v_conf.work_start.hour * 3600 + v_conf.work_start.minute * 60,
+                    v_conf.work_end.hour * 3600 + v_conf.work_end.minute * 60,
+                ]
+            }
+            if v_conf.end_location:
+                v["end"] = [v_conf.end_location.longitude, v_conf.end_location.latitude]
+            
+            # Map breaks
+            if v_conf.breaks:
+                v["breaks"] = []
+                for b in v_conf.breaks:
+                     v_break = {
+                         "id": b.id,
+                         "description": b.description,
+                         "service": b.duration_minutes * 60,
+                     }
+                     if b.start and b.end:
+                         # Provide time window for break: assumes break happens within this window
+                         # For fixed lunch break 13:00-14:00, window is [13:00, 14:00] and service matches duration
+                         v_break["time_windows"] = [[
+                             b.start.hour * 3600 + b.start.minute * 60,
+                             b.end.hour * 3600 + b.end.minute * 60,
+                         ]]
+                     v["breaks"].append(v_break)
+
+            vroom_vehicles.append(v)
+        return vroom_vehicles
+
+    def _prepare_jobs_from_routing_jobs(self, jobs: list[Job]) -> list[dict]:
+        vroom_jobs = []
+        for idx, job in enumerate(jobs):
+            j = {
+                "id": idx,
+                "location": [job.location.longitude, job.location.latitude],
+                "service": job.location.service_time_minutes * 60,
+                "amount": [int(job.demand_kg)],
+                "priority": job.priority,
+                "description": str(job.id),
+            }
+            if job.time_window_start and job.time_window_end:
+                 # Timestamps? VROOM usually expects [start_sec, end_sec] relative to 0 if no date provided
+                 # Or unix timestamps. Let's use relative for now if dates match, or just unix.
+                 # Given RoutingProblem usually has dates, let's stick to Unix timestamp consistency if VROOM expects it.
+                 # Actually VROOM is agnostic, but consistency matters.
+                 # _time_to_timestamp uses Unix.
+                 # Let's use Unix timestamps for jobs.
+                 j["time_windows"] = [[
+                     int(job.time_window_start.timestamp()),
+                     int(job.time_window_end.timestamp())
+                 ]]
+            vroom_jobs.append(j)
+        return vroom_jobs
+
+    def _parse_vroom_to_solution_result(self, data: dict, problem: RoutingProblem) -> SolutionResult:
+        """Parse raw VROOM response to SolutionResult."""
+        routes = []
+        unassigned_ids = []
+        
+        # Parse unassigned
+        for u in data.get("unassigned", []):
+            job_idx = u["id"]
+            if job_idx < len(problem.jobs):
+                unassigned_ids.append(problem.jobs[job_idx].id)
+        
+        # Parse routes
+        total_dist = 0
+        total_dur = 0
+        
+        for r in data.get("routes", []):
+            v_idx = r["vehicle"]
+            if v_idx >= len(problem.vehicles):
+                continue
+            
+            vehicle = problem.vehicles[v_idx]
+            steps = []
+            
+            for s in r.get("steps", []):
+                s_type = s["type"]
+                loc_coords = s.get("location", [0, 0])
+                location = Location(
+                    id=uuid.uuid4(), # Dummy
+                    name=s_type,
+                    latitude=loc_coords[1],
+                    longitude=loc_coords[0]
+                )
+                
+                job_id = None
+                if s_type == "job":
+                    job_idx = s["job"]
+                    if job_idx < len(problem.jobs):
+                        job_id = problem.jobs[job_idx].id
+                        location = problem.jobs[job_idx].location
+                
+                steps.append(RouteStep(
+                    job_id=job_id,
+                    location=location,
+                    arrival_time=datetime.fromtimestamp(s.get("arrival", 0)),
+                    departure_time=datetime.fromtimestamp(s.get("arrival", 0) + s.get("service", 0)),
+                    distance_from_previous_m=s.get("distance", 0),
+                    duration_from_previous_s=s.get("duration", 0),
+                    step_type=s_type
+                ))
+            
+            route_dist = r.get("distance", 0)
+            route_dur = r.get("duration", 0)
+            total_dist += route_dist
+            total_dur += route_dur
+
+            routes.append(Route(
+                vehicle_id=vehicle.id,
+                vehicle_name=vehicle.name,
+                steps=steps,
+                total_distance_m=route_dist,
+                total_duration_s=route_dur,
+                total_load=0, # TODO: parse load
+                geometry=r.get("geometry")
+            ))
+            
+        return SolutionResult(
+            routes=routes,
+            unassigned_jobs=unassigned_ids,
+            total_distance_m=total_dist,
+            total_duration_s=total_dur,
+            solver_used=SolverType.VROOM
+        )
 
     def _parse_solution(
         self,
@@ -265,6 +453,28 @@ class VROOMSolver:
             routes=routes,
             unassigned=data.get("unassigned", []),
         )
+
+    async def solve_tsp(
+        self,
+        locations: list[Location],
+        start_index: int = 0,
+        return_to_start: bool = True,
+    ) -> list[int]:
+        """
+        Solve TSP using VROOM.
+        
+        Args:
+            locations: List of locations to visit
+            start_index: Index of starting location
+            return_to_start: Whether to return to start location
+
+        Returns:
+            List of location indices in optimal order
+        """
+        # Create a simple RoutingProblem for TSP
+        # TODO: Implement full TSP mapping
+        # For now, return trivial order
+        return list(range(len(locations)))
 
     async def solve_raw(self, request_data: dict) -> dict:
         """

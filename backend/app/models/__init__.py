@@ -9,6 +9,7 @@ from app.models.vehicle import Vehicle
 from app.models.delivery_order import DeliveryOrder, OrderStatus
 from app.models.delivery_route import DeliveryRoute, DeliveryRouteStop, RouteStatus
 from app.models.user import User, UserRole
+from app.models.api_client import APIClient, ClientTier
 
 __all__ = [
     "TimestampMixin",
@@ -26,4 +27,7 @@ __all__ = [
     "RouteStatus",
     "User",
     "UserRole",
+    "APIClient",
+    "ClientTier",
 ]
+

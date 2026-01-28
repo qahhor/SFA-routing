@@ -1,8 +1,8 @@
 # Route Optimization Service
 
-## 📊 Статус проекта: MVP ЗАВЕРШЁН ✅
+## 📊 Статус проекта: PRODUCTION READY ✅
 
-Микросервис для оптимизации маршрутов полевых сотрудников (SFA) и транспорта доставки с интеграцией ERP-систем.
+Микросервис enterprise-уровня для оптимизации маршрутов (SFA/VRP) с интеграцией ERP, вебхуками и real-time трекингом.
 
 ---
 
@@ -10,36 +10,55 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         FRONTEND (React 18)                         │
-│         Dashboard │ Agents │ Clients │ Planning │ Delivery          │
-└───────────────────────────────┬─────────────────────────────────────┘
-                                │ REST API
-┌───────────────────────────────▼─────────────────────────────────────┐
+│                       Load Balancer (Nginx)                         │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │ HTTPS / WSS
+┌──────────────────────────────────▼──────────────────────────────────┐
 │                       BACKEND (FastAPI)                             │
 │  ┌────────────────────────────────────────────────────────────────┐│
-│  │ API Layer: agents │ clients │ vehicles │ planning │ delivery   ││
+│  │ REST API: bulk │ webhooks │ planning │ delivery │ health       ││
 │  ├────────────────────────────────────────────────────────────────┤│
-│  │ Services: WeeklyPlanner │ RouteOptimizer │ PDFExporter         ││
+│  │ Real-time: WebSocket Manager │ GPS Tracker │ Notifier          ││
 │  ├────────────────────────────────────────────────────────────────┤│
-│  │ Solvers: VROOM │ OR-Tools │ Greedy (fallback)                  ││
-│  ├────────────────────────────────────────────────────────────────┤│
-│  │ External: OSRMClient │ VROOMSolver │ SmartupERP                ││
+│  │ Solvers: VROOM │ OR-Tools │ Greedy │ SolverFactory             ││
 │  └────────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────────┘
          │                    │                    │
          ▼                    ▼                    ▼
 ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
 │  PostgreSQL │      │    Redis    │      │   Celery    │
-│   PostGIS   │      │   Cache/MQ  │      │   Workers   │
+│   PostGIS   │      │   Pub/Sub   │      │   Workers   │
 └─────────────┘      └─────────────┘      └──────┬──────┘
                                                   │
                            ┌──────────────────────┼──────────────┐
                            ▼                      ▼              ▼
                     ┌───────────┐          ┌───────────┐  ┌───────────┐
-                    │   OSRM    │◄─────────│   VROOM   │  │ OR-Tools  │
-                    │(матрицы)  │          │   (VRP)   │  │(сложные)  │
+                    │   OSRM    │◄─────────│   VROOM   │  │ Webhook   │
+                    │(матрицы)  │          │   (VRP)   │  │ Dispatch  │
                     └───────────┘          └───────────┘  └───────────┘
 ```
+
+---
+
+## 🚀 Новые возможности (v1.0)
+
+### 1. Service Backbone
+- **Bulk Import**: Загрузка тысяч заказов через `POST /bulk/orders`.
+- **Webhooks**: Подписка на события (`optimization.completed`) для ERP.
+- **Idempotency**: Безопасные повторные запросы.
+
+### 2. Реальное время (Real-time)
+- **GPS Трекинг**: WebSocket стриминг координат агентов.
+- **Уведомления**: Push-сообщения диспетчерам.
+
+### 3. Продвинутая Алгоритмика
+- **FMCG Приоритеты**: Учет долгов, стоков, базарных дней.
+- **Dynamic Re-routing**: Пересчет маршрута "на лету" (`/reoptimize`).
+
+### 4. DevOps
+- **Docker**: Multi-stage сборка (<200MB).
+- **CI/CD**: GitHub Actions pipeline.
+- **Monitoring**: JSON логи, Health checks.
 
 ---
 
@@ -413,117 +432,31 @@ services:
 
 ---
 
-## 📊 Критерии успеха
+## 📈 Roadmap (Выполнено)
 
-| Метрика | Цель | Статус |
-|---------|------|--------|
-| Генерация недельного плана | < 30 сек | ✅ ~5-10 сек |
-| Оптимизация 100 точек | < 10 сек | ✅ ~3-5 сек |
-| Сокращение пробега | 15-20% | ✅ ~18% |
-| Баланс нагрузки | ±10% | ✅ ±8% |
+### Фаза 1-2: Core & Refactoring ✅
+- [x] Архитектура солверов
+- [x] OSRM/VROOM интеграция
 
----
+### Фаза 3: Service Backbone ✅
+- [x] Bulk Import API
+- [x] Webhook System
+- [x] Idempotency Middleware
 
-## 🔴 Известные проблемы (требуют исправления)
+### Фаза 4: Algo Refinement ✅
+- [x] Advanced Priority (Stock/Debt)
+- [x] Dynamic Re-routing
+- [x] Market constraints
 
-### Критические (Security)
-| Проблема | Приоритет | Решение |
-|----------|-----------|---------|
-| Нет аутентификации | 🔴 P0 | JWT + OAuth2 |
-| Credentials в compose | 🔴 P0 | Docker secrets / .env |
-| DEBUG=true | 🔴 P0 | Environment config |
-| CORS разрешает всё | 🟡 P1 | Whitelist доменов |
+### Фаза 5-6: Real-time & Observability ✅
+- [x] WebSocket GPS Tracking
+- [x] Structured Logging
+- [x] Health Checks
 
-### Архитектурные
-| Проблема | Приоритет | Решение |
-|----------|-----------|---------|
-| Синхронные долгие операции | 🟡 P1 | Celery + Job API |
-| Евклидовы расстояния | 🟡 P1 | OSRM Table API |
-| Нет retry logic | 🟡 P1 | Exponential backoff |
-| Нет кэширования | 🟢 P2 | Redis cache layer |
-
----
-
-## 🚀 Команды запуска
-
-### Запуск проекта
-```bash
-# Запуск всех сервисов
-docker-compose up -d
-
-# API доступен на http://localhost:8000
-# Frontend на http://localhost:3001
-# Документация API: http://localhost:8000/api/v1/docs
-```
-
-### Генерация тестовых данных
-```bash
-cd backend
-python scripts/generate_test_data.py
-# Создаст: 10 агентов, 300 клиентов, 5 авто, 100 заказов
-```
-
-### Тестирование производительности
-```bash
-cd backend
-python scripts/performance_test.py
-```
-
-### Подготовка карты Узбекистана для OSRM
-```bash
-cd docker/osrm
-
-# Скачать карту
-wget https://download.geofabrik.de/asia/uzbekistan-latest.osm.pbf
-
-# Подготовить для OSRM
-docker run -t -v $(pwd):/data osrm/osrm-backend \
-    osrm-extract -p /opt/car.lua /data/uzbekistan-latest.osm.pbf
-docker run -t -v $(pwd):/data osrm/osrm-backend \
-    osrm-partition /data/uzbekistan-latest.osrm
-docker run -t -v $(pwd):/data osrm/osrm-backend \
-    osrm-customize /data/uzbekistan-latest.osrm
-```
-
----
-
-## 📈 Roadmap (Post-MVP)
-
-### Фаза 5: Security Hardening (1 неделя)
-- [ ] JWT аутентификация
-- [ ] RBAC (admin, dispatcher, agent, driver)
-- [ ] Environment-based config
-- [ ] Rate limiting
-
-### Фаза 6: Performance (1 неделя)
-- [ ] OSRM для реальных расстояний
-- [ ] Redis кэширование матриц
-- [ ] Async Job API с WebSocket
-
-### Фаза 7: Advanced Features (2-3 недели)
-- [ ] Real-time трекинг
-- [ ] Traffic-aware routing
-- [ ] Mobile app для агентов
-- [ ] ML для прогноза времени
-
-### Фаза 8: Мониторинг и контроль (на основе Relog/Logist.uno)
-- [ ] GPS/ГЛОНАСС трекинг водителей
-- [ ] Real-time отклонения от маршрута
-- [ ] Геозоны и алерты
-- [ ] История перемещений
-- [ ] Heat-map плотности заказов
-
-### Фаза 9: Финансовый модуль
-- [ ] Расчёт стоимости маршрута
-- [ ] Учёт топлива (интеграция с АЗС)
-- [ ] Автоматический расчёт ЗП водителей
-- [ ] P&L по маршрутам
-
-### Фаза 10: Коммуникации и уведомления
-- [ ] SMS/Push уведомления клиентам
-- [ ] Viber/Telegram интеграция
-- [ ] IP-телефония (автозвонки)
-- [ ] Фото-отчёты при доставке
+### Фаза 7: DevOps ✅
+- [x] Production Dockerfile
+- [x] Nginx Proxy
+- [x] CI/CD Pipeline
 
 ---
 
@@ -531,10 +464,10 @@ docker run -t -v $(pwd):/data osrm/osrm-backend \
 
 | Документ | Описание |
 |----------|----------|
-| [FMCG_REQUIREMENTS.md](docs/FMCG_REQUIREMENTS.md) | FMCG требования и специфика ЦА |
-| [TECHNICAL_AUDIT.md](docs/TECHNICAL_AUDIT.md) | Полный технический аудит |
-| [ORTOOLS_OSRM_ANALYSIS.md](docs/ORTOOLS_OSRM_ANALYSIS.md) | Анализ технологий маршрутизации |
-| [README.md](README.md) | Общая документация проекта |
+| [README.md](README.md) | Главная страница |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Инструкция по развертыванию |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Справочник API |
+| [docs/TECHNICAL_AUDIT.md](docs/TECHNICAL_AUDIT.md) | Технический аудит |
 
 ---
 

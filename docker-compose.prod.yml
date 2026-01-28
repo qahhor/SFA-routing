@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  api:
+    restart: always
+    volumes: [] # Remove dev code mounts
+    environment:
+      - LOG_LEVEL=INFO
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  celery:
+    restart: always
+    volumes: []
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  celery-beat:
+    restart: always
+    volumes: []
+
+  frontend:
+    restart: always
+    volumes: []
+    # In prod, frontend should be built as static asset and served by Nginx
+    # But for this Docker setup, serving via simple server or Nginx
+    command: npm run preview -- --host # Serve built assets
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      # - "443:443" # Uncomment when SSL certs are ready
+    volumes:
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - api
+    networks:
+      - route-network
+
+  # Production DB tuning (if using containerized DB)
+  db:
+    command: postgres -c shared_buffers=256MB -c work_mem=16MB
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+
+volumes:
+  postgres_data_prod:

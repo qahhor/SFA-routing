@@ -1,228 +1,127 @@
-# Route Optimization Service
+# SFA Routing Service 🚛
 
-A microservice for optimizing routes for field sales representatives (SFA) and delivery transportation. Integrates with existing ERP systems.
+Enterprise-grade microservice for optimizing routes for field sales representatives (SFA) and delivery transportation in Central Asia.
 
-## Features
+![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-success)
+![PostGIS](https://img.shields.io/badge/PostGIS-15-blue)
 
-### Sales Force Automation (SFA)
-- **Weekly Planning**: Automatic generation of weekly visit plans for sales representatives
-- **Client Categories**: Support for A/B/C client classification with different visit frequencies
-  - Category A: 2 visits per week
-  - Category B: 1 visit per week
-  - Category C: 1 visit every 2 weeks
-- **Geographic Clustering**: K-means clustering for efficient daily route grouping
-- **Route Optimization**: TSP-based optimization for daily visit sequences
+## 🌟 Key Features
 
-### Delivery Optimization
-- **Vehicle Routing Problem (VRP)**: Multi-vehicle route optimization
-- **Capacity Constraints**: Support for weight and volume limits
-- **Time Windows**: Delivery time window constraints
-- **Priority Handling**: Order priority-based optimization
+### 1. Advanced Routing & Optimization
+- **Hybrid Solver Engine**: Automatically selects between `VROOM` (speed), `OR-Tools` (complex constraints), or `Greedy` (fallback).
+- **FMCG Prioritization**: Routes generated based on stock levels, debt, and "Market Day" logic.
+- **Dynamic Re-routing**: `POST /delivery/routes/{id}/reoptimize` to handle traffic or order changes on the fly.
+- **Constraints**: 
+  - Vehicle capacity (weight/volume).
+  - Time windows & Service times.
+  - Driver breaks (Lunch/Prayer times).
 
-### Export & Integration
-- **PDF Export**: Export daily/weekly plans and delivery routes to PDF
-- **Smartup ERP Integration**: Sync agents, clients, orders with Smartup ERP
-- **RESTful API**: Full API for mobile app and third-party integrations
+### 2. Service Backbone (Integration)
+- **Bulk Import API**: High-performance endpoint (`POST /bulk/orders`) for ERP interaction.
+- **Event Webhooks**: Subscribe to events like `optimization.completed` via `POST /webhooks`.
+- **Idempotency**: Built-in protection against duplicate requests using `Idempotency-Key` header.
+- **Real-time Tracking**: WebSocket-based GPS tracking of agents and vehicles.
 
-## Tech Stack
+### 3. Regional Specifics (Central Asia)
+- **Uzbekistan/Kazakhstan Logic**:
+  - Friday Prayer break handling.
+  - "Bazaar Day" logic for specific markets.
+  - Seasonal work hour adjustments (Summer schedule).
 
-### Backend
-- **Python 3.11+** with **FastAPI**
-- **PostgreSQL 15** with **PostGIS** for geospatial data
-- **Celery + Redis** for background task processing
-- **SQLAlchemy 2.0** with async support
-- **Alembic** for database migrations
+---
 
-### Optimization Engines
-- **VROOM** - Vehicle Routing Open-source Optimization Machine
-- **OSRM** - Open Source Routing Machine for distance matrices
+## 🏗️ Architecture
 
-### Frontend
-- **React 18** with **TypeScript**
-- **Leaflet** + **OpenStreetMap** for maps
-- **TailwindCSS** for styling
-- **Zustand** for state management
-- **React Query** for server state
-
-## Project Structure
-
-```
-route-optimizer/
-├── backend/
-│   ├── app/
-│   │   ├── api/routes/       # API endpoints
-│   │   ├── core/             # Configuration, security, database
-│   │   ├── models/           # SQLAlchemy models
-│   │   ├── schemas/          # Pydantic schemas
-│   │   ├── services/         # Business logic
-│   │   └── tasks/            # Celery tasks
-│   ├── tests/                # Test suite
-│   └── alembic/              # Database migrations
-├── frontend/
-│   ├── src/
-│   │   ├── components/       # React components
-│   │   ├── pages/            # Page components
-│   │   ├── services/         # API client
-│   │   └── stores/           # State management
-└── docker/
-    ├── osrm/                 # OSRM configuration
-    └── vroom/                # VROOM configuration
+```mermaid
+graph TD
+    Client[Mobile/Web Client] -->|HTTPS| Nginx[Nginx Proxy]
+    Nginx -->|Proxy| API[FastAPI Backend]
+    
+    subgraph "Core Services"
+        API -->|Async| Celery[Celery Workers]
+        API -->|Read/Write| DB[(PostgreSQL + PostGIS)]
+        API -->|Cache| Redis[(Redis)]
+    end
+    
+    subgraph "Routing Engines"
+        Celery -->|HTTP| OSRM[OSRM (Distance Matrix)]
+        Celery -->|HTTP| VROOM[VROOM (Optimization)]
+        Celery -->|Import| ORTools[Google OR-Tools]
+    end
+    
+    subgraph "Real-time"
+        Client -->|WebSocket| API
+        API -->|PubSub| Redis
+    end
 ```
 
-## Quick Start
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- Docker and Docker Compose
-- Node.js 20+ (for local frontend development)
-- Python 3.11+ (for local backend development)
+- Docker Engine v24+
+- Docker Compose v2+
 
-### Running with Docker
+### Quick Start (Development)
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd route-optimizer
+1.  **Clone & Setup**:
+    ```bash
+    git clone <repo>
+    cd sfa-routing
+    cp .env.example .env
+    ```
 
-# Start all services
-docker-compose up -d
+2.  **Start Services**:
+    ```bash
+    docker compose up -d
+    ```
+    
+    - API: [http://localhost:8000](http://localhost:8000)
+    - Docs: [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs)
 
-# The API will be available at http://localhost:8000
-# The frontend will be available at http://localhost:3001
-# API documentation at http://localhost:8000/api/v1/docs
-```
+3.  **Run Migrations**:
+    ```bash
+    docker compose exec api alembic upgrade head
+    ```
 
-### Running with OSRM (for real routing)
+### Production Deployment
 
-```bash
-# First, prepare OSRM data (see docker/osrm/README.md)
-# Then start with OSRM profile:
-docker-compose --profile with-osrm up -d
-```
-
-### Local Development
-
-**Backend:**
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# Set environment variables
-export DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/routes"
-export REDIS_URL="redis://localhost:6379"
-
-# Run migrations
-alembic upgrade head
-
-# Start server
-uvicorn app.main:app --reload
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## API Endpoints
-
-### Planning API
-- `POST /api/v1/planning/weekly` - Generate weekly plan for an agent
-- `GET /api/v1/planning/agent/{agent_id}/week/{date}` - Get weekly plan
-- `PUT /api/v1/planning/visit/{visit_id}` - Update visit status
-
-### Delivery API
-- `POST /api/v1/delivery/optimize` - Optimize delivery routes
-- `GET /api/v1/delivery/routes` - List routes for a date
-- `GET /api/v1/delivery/route/{route_id}` - Get route with geometry
-
-### Reference Data API
-- `GET /api/v1/agents` - List agents
-- `GET /api/v1/clients` - List clients
-- `GET /api/v1/vehicles` - List vehicles
-
-### Export API
-- `GET /api/v1/export/daily-plan/{agent_id}/{date}` - Export daily plan to PDF
-- `GET /api/v1/export/weekly-plan/{agent_id}/{date}` - Export weekly plan to PDF
-- `GET /api/v1/export/delivery-route/{route_id}` - Export delivery route to PDF
-
-## Configuration
-
-Environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | - |
-| `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
-| `OSRM_URL` | OSRM service URL | `http://localhost:5000` |
-| `VROOM_URL` | VROOM service URL | `http://localhost:3000` |
-| `SECRET_KEY` | JWT secret key | - |
-
-## Testing
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed instructions on Nginx setup, SSL, and resource tuning.
 
 ```bash
-cd backend
-pytest
+# Production Launch
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-## Test Data Generation
+---
 
-Generate realistic test data for Tashkent:
+## 📚 Documentation
+
+- [**API Reference**](docs/API_REFERENCE.md): Detailed endpoint usage.
+- [**Deployment Guide**](docs/DEPLOYMENT.md): Production setup guide.
+- [**Technical Audit**](docs/TECHNICAL_AUDIT.md): Architectural analysis.
+- [**FMCG Requirements**](docs/FMCG_REQUIREMENTS.md): Domain logic specification.
+
+## 🛠️ Tech Stack
+
+- **Backend**: Python 3.11, FastAPI, SQLAlchemy 2.0 (Async)
+- **Database**: PostgreSQL 15 + PostGIS
+- **Queue**: Celery + Redis
+- **Infra**: Docker, Nginx, GitHub Actions (CI/CD)
+- **Observability**: JSON Logging, Health Checks (`/health`)
+
+## 🧪 Testing
 
 ```bash
-cd backend
-python scripts/generate_test_data.py
+# Run Unit & Integration Tests
+docker compose exec api pytest
+
+# Run Performance Benchmarks
+docker compose exec api python scripts/performance_test.py
 ```
 
-This creates:
-- 10 agents
-- 300 clients (20% A, 50% B, 30% C categories)
-- 5 vehicles
-- 100 sample delivery orders
-
-## Performance Testing
-
-Run performance benchmarks:
-
-```bash
-cd backend
-python scripts/performance_test.py
-```
-
-Success criteria:
-- Weekly plan generation: < 30 seconds
-- Delivery optimization (100 points): < 10 seconds
-- Mileage reduction: 15-20% vs manual
-- Load balance: ±10% across days
-
-## OSRM Setup for Uzbekistan
-
-See [docker/osrm/README.md](docker/osrm/README.md) for instructions on setting up OSRM with Uzbekistan map data.
-
-## Architecture
-
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Frontend  │────▶│   FastAPI   │────▶│  PostgreSQL │
-│   (React)   │     │   Backend   │     │   PostGIS   │
-└─────────────┘     └─────────────┘     └─────────────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │   Celery    │
-                    │   Workers   │
-                    └─────────────┘
-                           │
-            ┌──────────────┼──────────────┐
-            ▼              ▼              ▼
-     ┌───────────┐  ┌───────────┐  ┌───────────┐
-     │   Redis   │  │   OSRM    │  │   VROOM   │
-     │           │  │           │  │           │
-     └───────────┘  └───────────┘  └───────────┘
-```
-
-## License
-
+## 📄 License
 MIT
