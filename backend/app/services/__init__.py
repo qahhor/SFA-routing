@@ -28,6 +28,11 @@ from app.services.solver_interface import (
     Location,
     VehicleConfig,
     Job,
+    # FMCG-specific
+    ClientCategory,
+    VisitPurpose,
+    RegionalConfig,
+    RegionalConstraints,
 )
 
 # Import and register solver implementations
@@ -63,6 +68,11 @@ __all__ = [
     "Location",
     "VehicleConfig",
     "Job",
+    # FMCG-specific
+    "ClientCategory",
+    "VisitPurpose",
+    "RegionalConfig",
+    "RegionalConstraints",
     # Solver implementations
     "GreedySolver",
     "ORToolsSolver",

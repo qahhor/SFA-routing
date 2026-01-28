@@ -1,9 +1,16 @@
 """
 Weekly planning service for Sales Force Automation (SFA).
+
+Central Asia specific features:
+- Lunch break avoidance (13:00-14:00)
+- Friday prayer consideration (Uzbekistan)
+- Payday prioritization (5th, 20th)
+- Summer early start (07:00)
+- Visit prioritization based on FMCG factors
 """
 import uuid
-from dataclasses import dataclass
-from datetime import date, time, timedelta
+from dataclasses import dataclass, field
+from datetime import date, time, timedelta, datetime
 from typing import Optional
 
 import numpy as np
@@ -15,6 +22,7 @@ from app.models.client import Client, ClientCategory
 from app.models.visit_plan import VisitPlan, VisitStatus
 from app.services.osrm_client import OSRMClient, osrm_client
 from app.services.vroom_solver import VROOMSolver, vroom_solver
+from app.services.solver_interface import RegionalConstraints, RegionalConfig
 
 
 @dataclass
@@ -40,6 +48,11 @@ class PlannedVisit:
     duration_from_previous_minutes: int
     latitude: float
     longitude: float
+    # FMCG extensions
+    priority_score: float = 0
+    expected_order_value: float = 0
+    is_during_lunch: bool = False
+    client_category: str = "B"
 
 
 @dataclass
@@ -51,6 +64,53 @@ class WeeklyPlan:
     total_visits: int
     total_distance_km: float
     total_duration_minutes: int
+    # KPIs
+    workload_balance_score: float = 0  # 0-1, how balanced across days
+    avg_visits_per_day: float = 0
+    total_expected_value: float = 0
+    coverage_rate: float = 0  # % of required visits scheduled
+
+    def calculate_kpis(self) -> dict:
+        """Calculate FMCG-specific KPIs."""
+        visits_per_day = [len(dp.visits) for dp in self.daily_plans]
+        active_days = [v for v in visits_per_day if v > 0]
+
+        if not active_days:
+            return {}
+
+        self.avg_visits_per_day = sum(active_days) / len(active_days)
+
+        # Workload balance (coefficient of variation)
+        if len(active_days) > 1 and self.avg_visits_per_day > 0:
+            import statistics
+            std_dev = statistics.stdev(active_days)
+            cv = std_dev / self.avg_visits_per_day
+            self.workload_balance_score = max(0, 1 - cv)
+        else:
+            self.workload_balance_score = 1.0
+
+        # Travel vs service ratio (target: 30/70)
+        total_service_minutes = sum(
+            sum(15 for _ in dp.visits)  # Assuming 15 min per visit
+            for dp in self.daily_plans
+        )
+        total_time = self.total_duration_minutes
+        if total_time > 0:
+            travel_ratio = (total_time - total_service_minutes) / total_time
+        else:
+            travel_ratio = 0
+
+        return {
+            "total_visits": self.total_visits,
+            "avg_visits_per_day": round(self.avg_visits_per_day, 1),
+            "visits_per_day": visits_per_day,
+            "workload_balance_score": round(self.workload_balance_score, 2),
+            "total_distance_km": round(self.total_distance_km, 1),
+            "total_duration_hours": round(self.total_duration_minutes / 60, 1),
+            "km_per_visit": round(self.total_distance_km / self.total_visits, 2) if self.total_visits > 0 else 0,
+            "travel_ratio": round(travel_ratio, 2),
+            "active_days": len(active_days),
+        }
 
 
 class WeeklyPlanner:
@@ -63,16 +123,104 @@ class WeeklyPlanner:
        - Client category (A=2/week, B=1/week, C=0.5/week)
        - Geographic clustering
        - Client time windows
+       - Visit priority (stock levels, debt, promotions)
     3. Optimize daily route order (TSP via VROOM)
+
+    Central Asia specifics:
+    - Avoid lunch break (13:00-14:00)
+    - Consider Friday prayer in Uzbekistan
+    - Prioritize debt collection on payday (5th, 20th)
+    - Summer early start at 07:00
     """
 
     def __init__(
         self,
         osrm: Optional[OSRMClient] = None,
         vroom: Optional[VROOMSolver] = None,
+        region: RegionalConfig = RegionalConfig.UZBEKISTAN,
     ):
         self.osrm = osrm or osrm_client
         self.vroom = vroom or vroom_solver
+        self.region = region
+        self.constraints = self._get_regional_constraints()
+
+    def _get_regional_constraints(self) -> RegionalConstraints:
+        """Get constraints for the configured region."""
+        if self.region == RegionalConfig.UZBEKISTAN:
+            return RegionalConstraints.for_uzbekistan()
+        elif self.region == RegionalConfig.KAZAKHSTAN:
+            return RegionalConstraints.for_kazakhstan()
+        return RegionalConstraints()
+
+    def is_payday_period(self, check_date: date) -> bool:
+        """Check if date is within payday period (±3 days)."""
+        day = check_date.day
+        for payday in self.constraints.payday_dates:
+            if abs(day - payday) <= 3:
+                return True
+        return False
+
+    def is_summer_period(self, check_date: date) -> bool:
+        """Check if date is in summer (June-August)."""
+        return check_date.month in [6, 7, 8]
+
+    def get_adjusted_work_start(self, agent: Agent, route_date: date) -> time:
+        """Get adjusted work start time based on season."""
+        if self.is_summer_period(route_date) and self.constraints.summer_early_start:
+            return time(7, 0)  # Early start in summer
+        return agent.work_start
+
+    def calculate_client_priority(
+        self,
+        client: Client,
+        route_date: date,
+        stock_levels: Optional[dict[uuid.UUID, int]] = None,
+        debts: Optional[dict[uuid.UUID, float]] = None,
+        active_promos: Optional[set[uuid.UUID]] = None,
+    ) -> float:
+        """
+        Calculate visit priority score for a client.
+
+        Args:
+            client: Client to score
+            route_date: Date of planned visit
+            stock_levels: Dict of client_id -> days of stock remaining
+            debts: Dict of client_id -> outstanding debt amount
+            active_promos: Set of client IDs with active promotions
+
+        Returns:
+            Priority score 0-100 (higher = more urgent)
+        """
+        score = 0.0
+
+        # Base priority by category
+        if client.category == ClientCategory.A:
+            score += 20
+        elif client.category == ClientCategory.B:
+            score += 10
+
+        # Stock levels (critical = high priority)
+        if stock_levels and client.id in stock_levels:
+            days_remaining = stock_levels[client.id]
+            if days_remaining < 3:
+                score += 30  # Critical
+            elif days_remaining < 7:
+                score += 15  # Low
+
+        # Debt collection on payday
+        if debts and client.id in debts:
+            debt_amount = debts[client.id]
+            if debt_amount > 0:
+                if self.is_payday_period(route_date):
+                    score += 25  # High priority on payday
+                else:
+                    score += 10
+
+        # Active promotions
+        if active_promos and client.id in active_promos:
+            score += 15
+
+        return min(score, 100)
 
     def calculate_required_visits(
         self,
@@ -222,6 +370,7 @@ class WeeklyPlanner:
         agent: Agent,
         clients: list[Client],
         route_date: date,
+        client_priorities: Optional[dict[uuid.UUID, float]] = None,
     ) -> DailyPlan:
         """
         Optimize route for a single day using VROOM.
@@ -230,6 +379,7 @@ class WeeklyPlanner:
             agent: Agent for the route
             clients: Clients to visit
             route_date: Date of the route
+            client_priorities: Optional priority scores for clients
 
         Returns:
             Optimized DailyPlan
@@ -242,6 +392,61 @@ class WeeklyPlanner:
                 total_duration_minutes=0,
             )
 
+        # Get adjusted work hours
+        work_start = self.get_adjusted_work_start(agent, route_date)
+        is_friday = route_date.weekday() == 4
+
+        # Build time windows avoiding lunch break and Friday prayer
+        def get_client_time_windows(client: Client) -> list[list[int]]:
+            """Get valid time windows for a client, avoiding restricted periods."""
+            windows = []
+
+            # Default client hours
+            client_start = client.time_window_start or work_start
+            client_end = client.time_window_end or agent.work_end
+
+            start_sec = self._time_to_seconds(client_start)
+            end_sec = self._time_to_seconds(client_end)
+
+            # Lunch break
+            lunch_start = self._time_to_seconds(self.constraints.lunch_break_start)
+            lunch_end = self._time_to_seconds(self.constraints.lunch_break_end)
+
+            # Friday prayer (Uzbekistan)
+            prayer_start = None
+            prayer_end = None
+            if is_friday and self.region == RegionalConfig.UZBEKISTAN:
+                if self.constraints.friday_prayer_start:
+                    prayer_start = self._time_to_seconds(self.constraints.friday_prayer_start)
+                    prayer_end = self._time_to_seconds(self.constraints.friday_prayer_end)
+
+            # Split time window around restricted periods
+            if start_sec < lunch_start:
+                windows.append([start_sec, min(lunch_start, end_sec)])
+
+            if end_sec > lunch_end:
+                afternoon_start = max(lunch_end, start_sec)
+                windows.append([afternoon_start, end_sec])
+
+            # Further split for Friday prayer if applicable
+            if prayer_start and prayer_end:
+                new_windows = []
+                for w_start, w_end in windows:
+                    if w_end <= prayer_start or w_start >= prayer_end:
+                        new_windows.append([w_start, w_end])
+                    else:
+                        if w_start < prayer_start:
+                            new_windows.append([w_start, prayer_start])
+                        if w_end > prayer_end:
+                            new_windows.append([prayer_end, w_end])
+                windows = new_windows
+
+            # Fallback: use original window if all were removed
+            if not windows:
+                windows = [[start_sec, end_sec]]
+
+            return windows
+
         # Prepare VROOM request
         request_data = {
             "vehicles": [{
@@ -250,7 +455,7 @@ class WeeklyPlanner:
                 "end": [float(agent.end_longitude or agent.start_longitude),
                         float(agent.end_latitude or agent.start_latitude)],
                 "time_window": [
-                    self._time_to_seconds(agent.work_start),
+                    self._time_to_seconds(work_start),
                     self._time_to_seconds(agent.work_end),
                 ],
             }],
@@ -259,10 +464,9 @@ class WeeklyPlanner:
                     "id": idx,
                     "location": [float(client.longitude), float(client.latitude)],
                     "service": client.visit_duration_minutes * 60,
-                    "time_windows": [[
-                        self._time_to_seconds(client.time_window_start),
-                        self._time_to_seconds(client.time_window_end),
-                    ]],
+                    "time_windows": get_client_time_windows(client),
+                    # Add priority as negative cost (higher priority = lower cost)
+                    "priority": int(client_priorities.get(client.id, 50) if client_priorities else 50),
                 }
                 for idx, client in enumerate(clients)
             ],
@@ -280,12 +484,16 @@ class WeeklyPlanner:
         total_distance_km = 0
         total_duration_minutes = 0
 
+        # Lunch break times for checking
+        lunch_start = self._time_to_seconds(self.constraints.lunch_break_start)
+        lunch_end = self._time_to_seconds(self.constraints.lunch_break_end)
+
         if result.get("routes"):
             route = result["routes"][0]
             total_distance_km = route.get("distance", 0) / 1000
             total_duration_minutes = route.get("duration", 0) // 60
 
-            current_time = agent.work_start
+            current_time = work_start
             sequence = 0
 
             for step in route.get("steps", []):
@@ -303,6 +511,12 @@ class WeeklyPlanner:
                         arrival_seconds + client.visit_duration_minutes * 60
                     )
 
+                    # Check if visit falls during lunch
+                    is_during_lunch = (
+                        lunch_start <= arrival_seconds <= lunch_end or
+                        lunch_start <= (arrival_seconds + client.visit_duration_minutes * 60) <= lunch_end
+                    )
+
                     visits.append(PlannedVisit(
                         client_id=client.id,
                         client_name=client.name,
@@ -314,6 +528,9 @@ class WeeklyPlanner:
                         duration_from_previous_minutes=duration_from_prev // 60,
                         latitude=float(client.latitude),
                         longitude=float(client.longitude),
+                        priority_score=client_priorities.get(client.id, 0) if client_priorities else 0,
+                        is_during_lunch=is_during_lunch,
+                        client_category=client.category.value if hasattr(client.category, 'value') else str(client.category),
                     ))
 
         return DailyPlan(
@@ -385,6 +602,9 @@ class WeeklyPlanner:
         clients: list[Client],
         week_start: date,
         week_number: int = 1,
+        stock_levels: Optional[dict[uuid.UUID, int]] = None,
+        debts: Optional[dict[uuid.UUID, float]] = None,
+        active_promos: Optional[set[uuid.UUID]] = None,
     ) -> WeeklyPlan:
         """
         Generate complete weekly plan for an agent.
@@ -394,9 +614,12 @@ class WeeklyPlanner:
             clients: Agent's assigned clients
             week_start: Monday of the planning week
             week_number: Week number in cycle (for C-class scheduling)
+            stock_levels: Optional dict of client_id -> days of stock remaining
+            debts: Optional dict of client_id -> outstanding debt amount
+            active_promos: Optional set of client IDs with active promotions
 
         Returns:
-            Complete WeeklyPlan
+            Complete WeeklyPlan with KPIs
         """
         # Calculate required visits
         visits_needed = self.calculate_required_visits(clients, week_number)
@@ -404,7 +627,20 @@ class WeeklyPlanner:
         # Filter to clients that need visits this week
         clients_to_visit = [c for c in clients if visits_needed.get(c.id, 0) > 0]
 
-        # Assign to days
+        # Calculate priority scores for all clients
+        client_priorities: dict[uuid.UUID, float] = {}
+        for client in clients_to_visit:
+            # Use first day of week for priority calculation
+            priority = self.calculate_client_priority(
+                client,
+                week_start,
+                stock_levels,
+                debts,
+                active_promos,
+            )
+            client_priorities[client.id] = priority
+
+        # Assign to days (prioritized clients first)
         daily_assignments = self.assign_to_days(
             clients_to_visit,
             visits_needed,
@@ -418,8 +654,16 @@ class WeeklyPlanner:
             route_date = week_start + timedelta(days=day_offset)
             day_clients = daily_assignments.get(day_offset, [])
 
+            # Recalculate priorities for specific day (payday might differ)
+            day_priorities = {
+                c.id: self.calculate_client_priority(
+                    c, route_date, stock_levels, debts, active_promos
+                )
+                for c in day_clients
+            }
+
             daily_plan = await self.optimize_day_route(
-                agent, day_clients, route_date
+                agent, day_clients, route_date, day_priorities
             )
             daily_plans.append(daily_plan)
 
@@ -428,15 +672,27 @@ class WeeklyPlanner:
         total_distance = sum(dp.total_distance_km for dp in daily_plans)
         total_duration = sum(dp.total_duration_minutes for dp in daily_plans)
 
-        return WeeklyPlan(
+        # Calculate coverage rate
+        total_required = sum(visits_needed.values())
+        coverage_rate = total_visits / total_required if total_required > 0 else 1.0
+
+        plan = WeeklyPlan(
             agent_id=agent.id,
             week_start=week_start,
             daily_plans=daily_plans,
             total_visits=total_visits,
             total_distance_km=total_distance,
             total_duration_minutes=total_duration,
+            coverage_rate=coverage_rate,
         )
 
+        # Calculate KPIs
+        plan.calculate_kpis()
 
-# Singleton instance
-weekly_planner = WeeklyPlanner()
+        return plan
+
+
+# Singleton instances for different regions
+weekly_planner = WeeklyPlanner(region=RegionalConfig.UZBEKISTAN)
+weekly_planner_uz = WeeklyPlanner(region=RegionalConfig.UZBEKISTAN)
+weekly_planner_kz = WeeklyPlanner(region=RegionalConfig.KAZAKHSTAN)
