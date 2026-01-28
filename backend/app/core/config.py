@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8080"]
 
+    # Observability
+    SENTRY_DSN: Optional[str] = None  # Set to enable Sentry error tracking
+    METRICS_ENABLED: bool = True
+    METRICS_PATH: str = "/metrics"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

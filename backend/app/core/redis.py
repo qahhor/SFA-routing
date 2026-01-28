@@ -72,11 +72,15 @@ class RedisClient:
         """Set JSON value in cache."""
         await self.set(key, json.dumps(value), ttl_seconds)
 
+    async def ping(self) -> bool:
+        """Ping Redis server."""
+        client = await self.get_client()
+        return await client.ping()
+
     async def health_check(self) -> bool:
         """Check if Redis is available."""
         try:
-            client = await self.get_client()
-            await client.ping()
+            await self.ping()
             return True
         except Exception:
             return False
