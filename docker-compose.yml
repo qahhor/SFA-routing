@@ -1,0 +1,137 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://routeuser:routepass@db:5432/routes
+      - REDIS_URL=redis://redis:6379
+      - OSRM_URL=http://osrm:5000
+      - VROOM_URL=http://vroom:3000
+      - SECRET_KEY=change-this-in-production
+      - DEBUG=true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - route-network
+
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://routeuser:routepass@db:5432/routes
+      - REDIS_URL=redis://redis:6379
+      - OSRM_URL=http://osrm:5000
+      - VROOM_URL=http://vroom:3000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    command: celery -A app.tasks worker -l info -Q optimization
+    networks:
+      - route-network
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://routeuser:routepass@db:5432/routes
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - celery
+    volumes:
+      - ./backend:/app
+    command: celery -A app.tasks beat -l info
+    networks:
+      - route-network
+
+  db:
+    image: postgis/postgis:15-3.3
+    environment:
+      - POSTGRES_USER=routeuser
+      - POSTGRES_PASSWORD=routepass
+      - POSTGRES_DB=routes
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U routeuser -d routes"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - route-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - route-network
+
+  osrm:
+    image: osrm/osrm-backend:latest
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./docker/osrm:/data
+    command: osrm-routed --algorithm mld /data/uzbekistan-latest.osrm
+    profiles:
+      - with-osrm
+    networks:
+      - route-network
+
+  vroom:
+    image: vroomvrp/vroom-docker:v1.13.0
+    ports:
+      - "3000:3000"
+    environment:
+      - VROOM_ROUTER=osrm
+      - OSRM_URL=http://osrm:5000
+    depends_on:
+      - osrm
+    profiles:
+      - with-osrm
+    networks:
+      - route-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+    networks:
+      - route-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  route-network:
+    driver: bridge
