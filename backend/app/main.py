@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
+from app.core.logging import setup_logging
+from app.core.middleware.idempotency import IdempotencyMiddleware
 from app.api.routes import api_router
 
 
@@ -15,6 +17,7 @@ from app.api.routes import api_router
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
+    setup_logging()
     await init_db()
     yield
     # Shutdown
@@ -41,6 +44,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    
+    # Idempotency
+    app.add_middleware(IdempotencyMiddleware)
 
     # Include API router
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)

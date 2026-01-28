@@ -6,7 +6,7 @@ from datetime import time
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import String, Time, Numeric, Integer, Boolean
+from sqlalchemy import String, Time, Numeric, Integer, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -58,6 +58,20 @@ class Agent(Base, UUIDMixin, TimestampMixin):
     )
     end_longitude: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(9, 6),
+        nullable=True,
+    )
+
+    # Real-time Location
+    current_latitude: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(9, 6),
+        nullable=True,
+    )
+    current_longitude: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(9, 6),
+        nullable=True,
+    )
+    last_gps_update: Mapped[Optional[time]] = mapped_column(
+        DateTime,
         nullable=True,
     )
 

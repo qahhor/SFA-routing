@@ -23,7 +23,9 @@ from app.services.solver_interface import (
     Route,
     RouteStep,
     Location,
+    TransportMode,
 )
+from app.services.osrm_client import osrm_client
 
 try:
     from ortools.constraint_solver import routing_enums_pb2
@@ -80,6 +82,29 @@ class ORToolsSolver(RouteSolver):
         """
         if not ORTOOLS_AVAILABLE:
             raise RuntimeError("ortools package not installed")
+
+        # Pre-fetch OSRM matrix if not provided
+        if problem.distance_matrix is None:
+            try:
+                # Build location list to get coordinates
+                locations = self._build_location_list(problem)
+                coordinates = [(loc.longitude, loc.latitude) for loc in locations]
+
+                # Determine profile
+                profile = "driving"
+                if problem.transport_mode == TransportMode.PEDESTRIAN:
+                    profile = "foot"
+                elif problem.transport_mode == TransportMode.BICYCLE:
+                    profile = "bicycle"
+
+                # Fetch matrix
+                matrix = await osrm_client.get_table(coordinates, profile=profile)
+                if matrix:
+                    problem.distance_matrix = matrix["distances"]
+                    problem.duration_matrix = matrix["durations"]
+            except Exception as e:
+                # Log error but continue (will fallback to Euclidean)
+                print(f"OSRM matrix fetch failed: {e}")
 
         # Run in thread pool to not block event loop
         return await asyncio.get_event_loop().run_in_executor(
@@ -450,12 +475,25 @@ class ORToolsSolver(RouteSolver):
         if not ORTOOLS_AVAILABLE:
             raise RuntimeError("ortools package not installed")
 
+        # Fetch OSRM matrix for TSP
+        distance_matrix = None
+        try:
+            coordinates = [(loc.longitude, loc.latitude) for loc in locations]
+            # Default to driving for TSP unless specified (TSP doesn't assume problem context here)
+            # TODO: Add transport_mode argument to solve_tsp
+            matrix = await osrm_client.get_table(coordinates, profile="driving")
+            if matrix:
+                distance_matrix = matrix["distances"]
+        except Exception as e:
+            print(f"OSRM TSP fetch failed: {e}")
+
         return await asyncio.get_event_loop().run_in_executor(
             None,
             self._solve_tsp_sync,
             locations,
             start_index,
             return_to_start,
+            distance_matrix,
         )
 
     def _solve_tsp_sync(
@@ -463,14 +501,16 @@ class ORToolsSolver(RouteSolver):
         locations: list[Location],
         start_index: int,
         return_to_start: bool,
+        distance_matrix: Optional[list[list[int]]] = None,
     ) -> list[int]:
         """Synchronous TSP solving."""
 
         if len(locations) <= 2:
             return list(range(len(locations)))
 
-        # Compute distance matrix
-        distance_matrix = self._compute_euclidean_matrix(locations)
+        # Compute distance matrix if not provided
+        if distance_matrix is None:
+            distance_matrix = self._compute_euclidean_matrix(locations)
 
         # Create routing model
         manager = pywrapcp.RoutingIndexManager(

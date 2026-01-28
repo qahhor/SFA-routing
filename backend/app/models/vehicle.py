@@ -60,6 +60,17 @@ class Vehicle(Base, UUIDMixin, TimestampMixin):
         nullable=True,
     )
 
+    # Physical Dimensions
+    height_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 2), nullable=True, default=3.0)
+    length_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 2), nullable=True, default=6.0)
+    width_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 2), nullable=True, default=2.5)
+
+    # Capabilities
+    is_refrigerated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    min_temp_celsius: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 1), nullable=True)
+    max_temp_celsius: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 1), nullable=True)
+    requires_loader: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Working hours
     work_start: Mapped[time] = mapped_column(
         Time,
@@ -79,6 +90,11 @@ class Vehicle(Base, UUIDMixin, TimestampMixin):
         nullable=True,
     )
     fixed_cost: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 2),
+        default=Decimal("0"),
+        nullable=True,
+    )
+    driver_hourly_rate: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(10, 2),
         default=Decimal("0"),
         nullable=True,

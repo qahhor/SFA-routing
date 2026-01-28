@@ -11,7 +11,20 @@ from app.models.delivery_order import DeliveryOrder, OrderStatus
 from app.models.delivery_route import DeliveryRoute, DeliveryRouteStop, RouteStatus
 from app.models.vehicle import Vehicle
 from app.models.client import Client
-from app.services.vroom_solver import VROOMSolver, VROOMSolution, vroom_solver
+from app.models.delivery_order import DeliveryOrder, OrderStatus
+from app.models.delivery_route import DeliveryRoute, DeliveryRouteStop, RouteStatus
+from app.models.vehicle import Vehicle
+from app.models.client import Client
+from app.services.solver_interface import (
+    SolverFactory,
+    SolverType,
+    RoutingProblem,
+    Job,
+    VehicleConfig,
+    Location,
+    TransportMode,
+    SolutionResult,
+)
 from app.services.osrm_client import OSRMClient, osrm_client
 
 
@@ -67,12 +80,12 @@ class RouteOptimizer:
     - Order priorities
     """
 
+    """
+
     def __init__(
         self,
-        vroom: Optional[VROOMSolver] = None,
         osrm: Optional[OSRMClient] = None,
     ):
-        self.vroom = vroom or vroom_solver
         self.osrm = osrm or osrm_client
 
     async def optimize(
@@ -107,14 +120,26 @@ class RouteOptimizer:
         # Create order and vehicle index maps
         order_index = {idx: order for idx, order in enumerate(orders)}
         vehicle_index = {idx: vehicle for idx, vehicle in enumerate(vehicles)}
+        
+        # Build RoutingProblem
+        problem = self._build_problem(orders, vehicles, clients_map, route_date)
 
-        # Solve using VROOM
-        solution = await self.vroom.solve(
-            orders=orders,
-            vehicles=vehicles,
-            clients_map=clients_map,
-            route_date=route_date,
-        )
+        # Solve using SolverFactory with fallback
+        try:
+            solution = await SolverFactory.solve_with_fallback(
+                problem,
+                preferred=SolverType.VROOM
+            )
+        except Exception as e:
+            # Fallback failed completely
+            return OptimizationResult(
+                routes=[],
+                unassigned_orders=[o.id for o in orders],
+                total_distance_km=0,
+                total_duration_minutes=0,
+                total_vehicles_used=0,
+                summary={"error": str(e)},
+            )
 
         # Parse solution into routes
         return self._parse_solution(
@@ -127,9 +152,93 @@ class RouteOptimizer:
             route_date=route_date,
         )
 
+    def _build_problem(
+        self,
+        orders: list[DeliveryOrder],
+        vehicles: list[Vehicle],
+        clients_map: dict[uuid.UUID, Client],
+        route_date: date,
+    ) -> RoutingProblem:
+        """Build RoutingProblem from domain models."""
+        
+        # Convert vehicles
+        vehicle_configs = []
+        for v in vehicles:
+            start_loc = Location(
+                id=uuid.uuid4(),
+                name=f"Start {v.name}",
+                latitude=float(v.start_latitude),
+                longitude=float(v.start_longitude),
+            )
+            
+            end_loc = None
+            if v.end_latitude and v.end_longitude:
+                end_loc = Location(
+                    id=uuid.uuid4(),
+                    name=f"End {v.name}",
+                    latitude=float(v.end_latitude),
+                    longitude=float(v.end_longitude),
+                )
+            
+            vehicle_configs.append(VehicleConfig(
+                id=v.id,
+                name=v.name,
+                capacity_kg=float(v.capacity_kg),
+                start_location=start_loc,
+                end_location=end_loc,
+                work_start=v.work_start,
+                work_end=v.work_end,
+            ))
+            
+        # Convert orders to jobs
+        jobs = []
+        for order in orders:
+            client = clients_map.get(order.client_id)
+            if not client:
+                continue
+                
+            loc = Location(
+                id=uuid.uuid4(),
+                name=client.name,
+                latitude=float(client.latitude),
+                longitude=float(client.longitude),
+                service_time_minutes=order.service_time_minutes,
+            )
+            
+            jobs.append(Job(
+                id=uuid.uuid4(), # Use internal ID to map back? Or order ID directly? 
+                # Job expects UUID. Let's map strict index logic or reuse order ID if it's UUID.
+                # Only Job.id is UUID. DeliveryOrder.id is UUID. Perfect
+                location=loc,
+                demand_kg=float(order.weight_kg),
+                priority=order.priority,
+                time_window_start=order.time_window_start,
+                time_window_end=order.time_window_end,
+                
+                # FMCG Advanced Features
+                stock_days_remaining=client.stock_days_remaining,
+                outstanding_debt=float(client.outstanding_debt or 0),
+                is_new_client=client.is_new_client,
+                has_active_promo=client.has_active_promo,
+                churn_risk_score=float(client.churn_risk_score or 0),
+            ))
+            
+            # Recalculate priority based on FMCG factors
+            # Check if today is payday (simplified check, real logic needs business calendar)
+            is_payday = route_date.day in [5, 20]
+            jobs[-1].priority = int(jobs[-1].calculate_priority_score(is_payday=is_payday))
+            
+        return RoutingProblem(
+            jobs=jobs,
+            vehicles=vehicle_configs,
+            planning_date=route_date,
+            transport_mode=TransportMode.CAR, # Delivery implies car usually
+            has_time_windows=True,
+        )
+
     def _parse_solution(
         self,
-        solution: VROOMSolution,
+        solution: Any,
         orders: list[DeliveryOrder],
         vehicles: list[Vehicle],
         order_index: dict[int, DeliveryOrder],
@@ -137,6 +246,13 @@ class RouteOptimizer:
         clients_map: dict[uuid.UUID, Client],
         route_date: date,
     ) -> OptimizationResult:
+        """Parse solution into OptimizationResult."""
+        # Handle new SolutionResult
+        if isinstance(solution, SolutionResult):
+             return self._parse_solution_result(
+                solution, orders, vehicles, order_index, vehicle_index, clients_map, route_date
+             )
+
         """Parse VROOM solution into OptimizationResult."""
         optimized_routes = []
         total_distance = 0
@@ -209,6 +325,77 @@ class RouteOptimizer:
             total_distance_km=total_distance,
             total_duration_minutes=total_duration,
             total_vehicles_used=len(optimized_routes),
+            summary=solution.summary,
+        )
+
+    def _parse_solution_result(
+        self,
+        solution: SolutionResult,
+        orders: list[DeliveryOrder],
+        vehicles: list[Vehicle],
+        order_index: dict[int, DeliveryOrder],
+        vehicle_index: dict[int, Vehicle],
+        clients_map: dict[uuid.UUID, Client],
+        route_date: date,
+    ) -> OptimizationResult:
+        """Parse standard SolutionResult."""
+        opt_routes = []
+        
+        # Map UUID back to objects
+        orders_map = {o.id: o for o in orders}
+        vehicles_map = {v.id: v for v in vehicles}
+        
+        for route in solution.routes:
+            vehicle = vehicles_map.get(route.vehicle_id)
+            if not vehicle:
+                continue
+
+            stops = []
+            
+            for step in route.steps:
+                if step.step_type == "job" and step.job_id:
+                    order = orders_map.get(step.job_id)
+                    if not order:
+                        continue
+                    
+                    client = clients_map.get(order.client_id)
+                    client_name = client.name if client else "Unknown"
+                    client_lat = float(client.latitude) if client else 0.0
+                    client_lon = float(client.longitude) if client else 0.0
+                    
+                    stops.append(OptimizedStop(
+                        order_id=order.id,
+                        client_id=order.client_id,
+                        client_name=client_name,
+                        sequence_number=len(stops) + 1,
+                        planned_arrival=step.arrival_time,
+                        planned_departure=step.departure_time,
+                        distance_from_previous_km=float(step.distance_from_previous_m) / 1000,
+                        duration_from_previous_minutes=int(step.duration_from_previous_s / 60) if getattr(step, 'duration_from_previous_s', None) else 0,
+                        weight_kg=float(order.weight_kg),
+                        latitude=client_lat,
+                        longitude=client_lon,
+                    ))
+            
+            if stops:
+                opt_routes.append(OptimizedRoute(
+                    vehicle_id=vehicle.id,
+                    vehicle_name=vehicle.name,
+                    stops=stops,
+                    total_distance_km=float(route.total_distance_m) / 1000,
+                    total_duration_minutes=int(route.total_duration_s / 60),
+                    total_weight_kg=float(route.total_load),
+                    planned_start=route.steps[0].departure_time if route.steps else datetime.combine(route_date, datetime.min.time()),
+                    planned_end=route.steps[-1].arrival_time if route.steps else datetime.combine(route_date, datetime.max.time()),
+                    geometry=route.geometry,
+                ))
+                
+        return OptimizationResult(
+            routes=opt_routes,
+            unassigned_orders=solution.unassigned_jobs,
+            total_distance_km=float(solution.total_distance_m) / 1000,
+            total_duration_minutes=int(solution.total_duration_s / 60),
+            total_vehicles_used=len(opt_routes),
             summary=solution.summary,
         )
 

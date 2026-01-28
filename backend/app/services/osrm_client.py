@@ -85,6 +85,7 @@ class OSRMClient:
         profile: str = "driving",
         sources: Optional[list[int]] = None,
         destinations: Optional[list[int]] = None,
+        use_cache: bool = True,
     ) -> MatrixResult:
         """
         Get distance/duration matrix between coordinates.
@@ -94,10 +95,21 @@ class OSRMClient:
             profile: Routing profile
             sources: Indices of source points (default: all)
             destinations: Indices of destination points (default: all)
+            use_cache: Whether to use cache (default: True)
 
         Returns:
             MatrixResult with distances and durations matrices
         """
+        # Try cache first (only for full matrix requests)
+        if use_cache and sources is None and destinations is None:
+            from app.core.cache import distance_matrix_cache
+            cached = await distance_matrix_cache.get(coordinates)
+            if cached:
+                return MatrixResult(
+                    distances=cached["distances"],
+                    durations=cached["durations"],
+                )
+
         coords_str = ";".join(f"{lon},{lat}" for lon, lat in coordinates)
         url = f"{self.base_url}/table/v1/{profile}/{coords_str}"
 
@@ -118,10 +130,20 @@ class OSRMClient:
         if data["code"] != "Ok":
             raise ValueError(f"OSRM error: {data.get('message', 'Unknown error')}")
 
-        return MatrixResult(
+        result = MatrixResult(
             distances=data["distances"],
             durations=data["durations"],
         )
+
+        # Cache the result (only for full matrix requests)
+        if use_cache and sources is None and destinations is None:
+            from app.core.cache import distance_matrix_cache
+            await distance_matrix_cache.set(
+                coordinates,
+                {"distances": result.distances, "durations": result.durations},
+            )
+
+        return result
 
     async def get_nearest(
         self,

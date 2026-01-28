@@ -1,11 +1,13 @@
 """
 Health check endpoints.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis import asyncio as redis
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.services.osrm_client import osrm_client
 from app.services.vroom_solver import vroom_solver
 
@@ -15,7 +17,7 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 async def health_check() -> dict:
     """Basic health check."""
-    return {"status": "healthy"}
+    return {"status": "healthy", "app": settings.APP_NAME, "version": settings.APP_VERSION}
 
 
 @router.get("/health/detailed")
@@ -28,6 +30,7 @@ async def detailed_health_check(
         "database": "unknown",
         "osrm": "unknown",
         "vroom": "unknown",
+        "redis": "unknown",
     }
 
     # Check database
@@ -54,6 +57,15 @@ async def detailed_health_check(
             checks["vroom"] = "unhealthy"
     except Exception as e:
         checks["vroom"] = f"unhealthy: {str(e)}"
+
+    # Check Redis
+    try:
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        await r.ping()
+        await r.aclose()
+        checks["redis"] = "healthy"
+    except Exception as e:
+        checks["redis"] = f"unhealthy: {str(e)}"
 
     overall = "healthy" if all(
         v == "healthy" for v in checks.values()

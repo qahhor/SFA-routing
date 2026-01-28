@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Route Optimization Service"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
+    ENVIRONMENT: str = "development"  # development, staging, production
 
     # API
     API_V1_PREFIX: str = "/api/v1"
@@ -35,6 +36,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 days
     ALGORITHM: str = "HS256"
+
+    # API Rate Limiting
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_DEFAULT_PER_MINUTE: int = 10  # For unauthenticated requests
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
+
+    # API Client defaults
+    API_CLIENT_DEFAULT_TIER: str = "free"
+    API_CLIENT_FREE_RATE_LIMIT: int = 10
+    API_CLIENT_FREE_MAX_POINTS: int = 50
+    API_CLIENT_FREE_MONTHLY_QUOTA: int = 1000
 
     # Planning defaults
     DEFAULT_WORK_START: str = "09:00"
@@ -62,3 +74,4 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
