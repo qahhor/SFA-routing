@@ -4,11 +4,12 @@ Authentication endpoints.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.rate_limit import limiter, RateLimits
 from app.core.security import (
     authenticate_user,
     create_access_token,
@@ -42,7 +43,9 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 # ============== Public Endpoints ==============
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(RateLimits.AUTH_REGISTER)
 async def register(
+    request_obj: Request,
     request: RegisterRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -81,7 +84,9 @@ async def register(
 
 
 @router.post("/login", response_model=LoginResponse)
+@limiter.limit(RateLimits.AUTH_LOGIN)
 async def login(
+    request_obj: Request,
     request: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -89,6 +94,7 @@ async def login(
     Login with email and password.
 
     Returns access and refresh tokens.
+    Rate limited to 5 requests per minute to prevent brute force.
     """
     user = await authenticate_user(db, request.email, request.password)
 
@@ -122,7 +128,9 @@ async def login(
 
 
 @router.post("/refresh", response_model=Token)
+@limiter.limit(RateLimits.AUTH_REFRESH)
 async def refresh_token(
+    request_obj: Request,
     request: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
 ):

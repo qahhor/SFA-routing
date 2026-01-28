@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost:5432/routes"
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_RECYCLE: int = 3600  # Recycle connections after 1 hour
+    DATABASE_POOL_TIMEOUT: int = 30  # Wait max 30s for a connection
+    DATABASE_POOL_PRE_PING: bool = True  # Verify connections before use
+    DATABASE_STATEMENT_TIMEOUT: int = 30000  # Statement timeout in ms (30s)
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
