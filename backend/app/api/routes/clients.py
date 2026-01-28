@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.security import get_current_user, get_dispatcher_user
 from app.models.client import Client, ClientCategory
 from app.models.agent import Agent
+from app.models.user import User
 from app.schemas.client import (
     ClientCreate,
     ClientUpdate,
@@ -30,6 +32,7 @@ async def list_clients(
     category: Optional[ClientCategory] = Query(None, description="Filter by category"),
     is_active: Optional[bool] = Query(None),
     search: Optional[str] = Query(None, description="Search by name or address"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ClientListResponse:
     """Get list of clients with pagination."""
@@ -79,6 +82,7 @@ async def list_clients(
 @router.get("/{client_id}", response_model=ClientResponse)
 async def get_client(
     client_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ClientResponse:
     """Get client by ID."""
@@ -101,6 +105,7 @@ async def get_client(
 @router.post("", response_model=ClientResponse, status_code=201)
 async def create_client(
     data: ClientCreate,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> ClientResponse:
     """Create a new client."""
@@ -140,6 +145,7 @@ async def create_client(
 async def update_client(
     client_id: UUID,
     data: ClientUpdate,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> ClientResponse:
     """Update a client."""
@@ -185,6 +191,7 @@ async def update_client(
 @router.delete("/{client_id}", status_code=204)
 async def delete_client(
     client_id: UUID,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete a client."""
@@ -202,6 +209,7 @@ async def delete_client(
 async def assign_client_to_agent(
     client_id: UUID,
     agent_id: UUID,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> ClientResponse:
     """Assign a client to an agent."""

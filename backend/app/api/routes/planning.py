@@ -11,9 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.security import get_current_user, get_dispatcher_user
 from app.models.agent import Agent
 from app.models.client import Client
 from app.models.visit_plan import VisitPlan, VisitStatus
+from app.models.user import User
 from app.schemas.planning import (
     WeeklyPlanRequest,
     WeeklyPlanResponse,
@@ -42,6 +44,7 @@ def get_day_name(d: date) -> str:
 @router.post("/weekly", response_model=WeeklyPlanResponse)
 async def generate_weekly_plan(
     request: WeeklyPlanRequest,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> WeeklyPlanResponse:
     """
@@ -156,6 +159,7 @@ async def generate_weekly_plan(
 async def get_weekly_plan(
     agent_id: UUID,
     week_date: date,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WeeklyPlanResponse:
     """Get existing weekly plan for an agent."""
@@ -259,6 +263,7 @@ async def get_weekly_plan(
 async def get_daily_visits(
     agent_id: UUID,
     plan_date: date,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VisitPlanListResponse:
     """Get visit plan for a specific day."""
@@ -306,6 +311,7 @@ async def get_daily_visits(
 async def update_visit(
     visit_id: UUID,
     data: VisitPlanUpdate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VisitPlanResponse:
     """Update a visit plan (status, actual times, notes)."""

@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.security import get_current_user, get_dispatcher_user
 from app.models.delivery_order import DeliveryOrder, OrderStatus
 from app.models.delivery_route import DeliveryRoute, DeliveryRouteStop, RouteStatus
 from app.models.vehicle import Vehicle
 from app.models.client import Client
+from app.models.user import User
 from app.schemas.delivery import (
     DeliveryOrderCreate,
     DeliveryOrderResponse,
@@ -33,6 +35,7 @@ router = APIRouter(prefix="/delivery", tags=["delivery"])
 @router.post("/orders", response_model=DeliveryOrderResponse, status_code=201)
 async def create_order(
     data: DeliveryOrderCreate,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> DeliveryOrderResponse:
     """Create a new delivery order."""
@@ -73,6 +76,7 @@ async def list_orders(
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     limit: int = Query(100, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[DeliveryOrderResponse]:
     """List delivery orders with filters."""
@@ -111,6 +115,7 @@ async def list_orders(
 @router.post("/optimize", response_model=DeliveryOptimizeResponse)
 async def optimize_delivery_routes(
     request: DeliveryOptimizeRequest,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> DeliveryOptimizeResponse:
     """
@@ -268,6 +273,7 @@ async def list_routes(
     route_date: date,
     vehicle_id: Optional[UUID] = Query(None),
     status: Optional[RouteStatus] = Query(None),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DeliveryRouteListResponse:
     """List delivery routes for a date."""
@@ -349,6 +355,7 @@ async def list_routes(
 @router.get("/route/{route_id}", response_model=DeliveryRouteResponse)
 async def get_route(
     route_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DeliveryRouteResponse:
     """Get delivery route with geometry for map display."""

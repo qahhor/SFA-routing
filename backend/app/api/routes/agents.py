@@ -9,8 +9,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import get_current_user, get_dispatcher_user
 from app.models.agent import Agent
 from app.models.client import Client
+from app.models.user import User
 from app.schemas.agent import (
     AgentCreate,
     AgentUpdate,
@@ -27,6 +29,7 @@ async def list_agents(
     size: int = Query(20, ge=1, le=100),
     is_active: Optional[bool] = Query(None),
     search: Optional[str] = Query(None, description="Search by name or external_id"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AgentListResponse:
     """Get list of agents with pagination."""
@@ -73,6 +76,7 @@ async def list_agents(
 @router.get("/{agent_id}", response_model=AgentResponse)
 async def get_agent(
     agent_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AgentResponse:
     """Get agent by ID."""
@@ -95,6 +99,7 @@ async def get_agent(
 @router.post("", response_model=AgentResponse, status_code=201)
 async def create_agent(
     data: AgentCreate,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> AgentResponse:
     """Create a new agent."""
@@ -120,6 +125,7 @@ async def create_agent(
 async def update_agent(
     agent_id: UUID,
     data: AgentUpdate,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> AgentResponse:
     """Update an agent."""
@@ -149,6 +155,7 @@ async def update_agent(
 @router.delete("/{agent_id}", status_code=204)
 async def delete_agent(
     agent_id: UUID,
+    current_user: User = Depends(get_dispatcher_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete an agent."""

@@ -8,6 +8,7 @@ from app.models.visit_plan import VisitPlan, VisitStatus
 from app.models.vehicle import Vehicle
 from app.models.delivery_order import DeliveryOrder, OrderStatus
 from app.models.delivery_route import DeliveryRoute, DeliveryRouteStop, RouteStatus
+from app.models.user import User, UserRole
 
 __all__ = [
     "TimestampMixin",
@@ -23,4 +24,6 @@ __all__ = [
     "DeliveryRoute",
     "DeliveryRouteStop",
     "RouteStatus",
+    "User",
+    "UserRole",
 ]
