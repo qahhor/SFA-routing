@@ -295,14 +295,25 @@ async def list_routes(
     result = await db.execute(query)
     routes = result.scalars().all()
 
+    # Batch load all clients to avoid N+1 queries
+    client_ids = set()
+    for route in routes:
+        for stop in route.stops:
+            if stop.order and stop.order.client_id:
+                client_ids.add(stop.order.client_id)
+
+    clients_map: dict[UUID, Client] = {}
+    if client_ids:
+        clients_result = await db.execute(
+            select(Client).where(Client.id.in_(client_ids))
+        )
+        clients_map = {c.id: c for c in clients_result.scalars().all()}
+
     items = []
     for route in routes:
         stops = []
         for stop in route.stops:
-            client_result = await db.execute(
-                select(Client).where(Client.id == stop.order.client_id)
-            )
-            client = client_result.scalar_one_or_none()
+            client = clients_map.get(stop.order.client_id) if stop.order else None
 
             stops.append(DeliveryRouteStopResponse(
                 id=stop.id,
@@ -372,12 +383,23 @@ async def get_route(
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
 
+    # Batch load all clients to avoid N+1 queries
+    client_ids = {
+        stop.order.client_id
+        for stop in route.stops
+        if stop.order and stop.order.client_id
+    }
+
+    clients_map: dict[UUID, Client] = {}
+    if client_ids:
+        clients_result = await db.execute(
+            select(Client).where(Client.id.in_(client_ids))
+        )
+        clients_map = {c.id: c for c in clients_result.scalars().all()}
+
     stops = []
     for stop in route.stops:
-        client_result = await db.execute(
-            select(Client).where(Client.id == stop.order.client_id)
-        )
-        client = client_result.scalar_one_or_none()
+        client = clients_map.get(stop.order.client_id) if stop.order else None
 
         stops.append(DeliveryRouteStopResponse(
             id=stop.id,

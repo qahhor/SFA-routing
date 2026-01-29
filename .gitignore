@@ -81,3 +81,16 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# SSL certificates (sensitive)
+docker/nginx/ssl/*.pem
+docker/nginx/ssl/*.crt
+docker/nginx/ssl/*.key
+
+# Backups (can be large)
+backups/*.sql
+backups/*.sql.gz
+
+# Deployment logs
+logs/*.log
+deploy_*.log

@@ -7,6 +7,7 @@ Provides API for:
 - Listing jobs for a client
 - Cancelling jobs
 """
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -15,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.celery_app import celery_app
 from app.core.auth import get_api_client
+from app.core.rate_limit import limiter, RateLimits
 from app.models.api_client import APIClient
 from app.schemas.job import (
     DeliveryRoutesJobParams,
@@ -30,6 +32,8 @@ from app.tasks.optimization import (
     optimize_delivery_routes_task,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 
@@ -41,7 +45,7 @@ def celery_state_to_job_status(state: str) -> JobStatus:
         "SUCCESS": JobStatus.SUCCESS,
         "FAILURE": JobStatus.FAILURE,
         "REVOKED": JobStatus.REVOKED,
-        "RETRY": JobStatus.STARTED,
+        "RETRY": JobStatus.RETRY,
         "RECEIVED": JobStatus.PENDING,
     }
     return state_map.get(state, JobStatus.PENDING)
@@ -55,7 +59,9 @@ def celery_state_to_job_status(state: str) -> JobStatus:
     description="Submit a background job to generate weekly plan for an agent. "
                 "Returns job ID for status tracking.",
 )
+@limiter.limit(RateLimits.OPTIMIZE_ROUTES)
 async def submit_weekly_plan_job(
+    request,
     params: WeeklyPlanJobParams,
     api_client: APIClient = Depends(get_api_client),
 ):
@@ -70,6 +76,8 @@ async def submit_weekly_plan_job(
         # Store client ID in task metadata for filtering
         headers={"client_id": str(api_client.id)},
     )
+
+    logger.info(f"Queued weekly plan job {task.id} for agent {params.agent_id}")
 
     return JobResponse(
         job_id=task.id,
@@ -88,7 +96,9 @@ async def submit_weekly_plan_job(
     description="Submit a background job to optimize delivery routes. "
                 "Returns job ID for status tracking.",
 )
+@limiter.limit(RateLimits.OPTIMIZE_ROUTES)
 async def submit_delivery_routes_job(
+    request,
     params: DeliveryRoutesJobParams,
     api_client: APIClient = Depends(get_api_client),
 ):
@@ -110,6 +120,11 @@ async def submit_delivery_routes_job(
             params.route_date,
         ],
         headers={"client_id": str(api_client.id)},
+    )
+
+    logger.info(
+        f"Queued delivery optimization job {task.id} "
+        f"with {len(params.order_ids)} orders"
     )
 
     return JobResponse(
@@ -185,6 +200,9 @@ async def cancel_job(
 
     # Revoke the task
     celery_app.control.revoke(job_id, terminate=True)
+    logger.info(f"Cancelled job {job_id}")
+
+    return None
 
 
 @router.get(
@@ -200,11 +218,75 @@ async def list_jobs(
 ):
     """
     List recent jobs.
-    
+
     Note: This is a simplified implementation. In production,
     you'd store job metadata in a database for better querying.
     """
-    # This is a placeholder - in production, store jobs in DB
-    # For now, return empty list as Celery doesn't easily support
-    # listing all tasks by client
-    return JobListResponse(items=[], total=0)
+    # Get active tasks from Celery
+    inspect = celery_app.control.inspect()
+
+    items = []
+
+    # Get scheduled tasks
+    scheduled = inspect.scheduled() or {}
+    for worker, tasks in scheduled.items():
+        for task in tasks[:limit]:
+            if "id" in task:
+                items.append(JobResponse(
+                    job_id=task["id"],
+                    job_type=JobType.DELIVERY_ROUTES,
+                    status=JobStatus.PENDING,
+                    message="Scheduled",
+                ))
+
+    # Get active tasks
+    active = inspect.active() or {}
+    for worker, tasks in active.items():
+        for task in tasks[:limit]:
+            if "id" in task:
+                items.append(JobResponse(
+                    job_id=task["id"],
+                    job_type=JobType.DELIVERY_ROUTES,
+                    status=JobStatus.STARTED,
+                    message="In progress",
+                ))
+
+    # Filter by status if provided
+    if status_filter:
+        items = [j for j in items if j.status.value == status_filter]
+
+    return JobListResponse(items=items[:limit], total=len(items))
+
+
+@router.get("/health/celery")
+async def celery_health_check(
+    api_client: APIClient = Depends(get_api_client),
+):
+    """
+    Check Celery worker health.
+
+    Returns status of connected workers.
+    """
+    inspect = celery_app.control.inspect()
+
+    ping_response = inspect.ping()
+    if not ping_response:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No Celery workers available",
+        )
+
+    stats = inspect.stats() or {}
+
+    return {
+        "status": "healthy",
+        "workers": list(ping_response.keys()),
+        "worker_count": len(ping_response),
+        "stats": {
+            worker: {
+                "pool": data.get("pool", {}).get("max-concurrency", 0),
+                "total_tasks": data.get("total", {}),
+            }
+            for worker, data in stats.items()
+        },
+    }

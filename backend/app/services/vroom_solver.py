@@ -1,6 +1,13 @@
 """
 VROOM (Vehicle Routing Open-source Optimization Machine) solver.
+
+Features:
+- Exponential backoff retry logic
+- Structured error handling
+- Configurable timeouts
 """
+import asyncio
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, date, time, timedelta
@@ -26,6 +33,18 @@ from app.services.solver_interface import (
     Job,
     TransportMode,
 )
+
+logger = logging.getLogger(__name__)
+
+
+class VROOMError(Exception):
+    """VROOM service error."""
+
+    def __init__(self, message: str, code: Optional[int] = None, details: Optional[dict] = None):
+        self.message = message
+        self.code = code
+        self.details = details or {}
+        super().__init__(message)
 
 
 @dataclass
@@ -97,11 +116,88 @@ class VROOMSolver(RouteSolver):
     - Time windows for pickups/deliveries
     - Service times at stops
     - Priority-based optimization
+
+    Features:
+    - Exponential backoff retry (3 attempts)
+    - Configurable timeouts
+    - Structured error handling
     """
 
-    def __init__(self, base_url: Optional[str] = None):
+    MAX_RETRIES = 3
+    RETRY_BASE_DELAY = 2.0  # seconds
+
+    def __init__(self, base_url: Optional[str] = None, timeout_seconds: float = 300.0):
         self.base_url = (base_url or settings.VROOM_URL).rstrip("/")
-        self.timeout = httpx.Timeout(300.0, connect=30.0)
+        self.timeout = httpx.Timeout(timeout_seconds, connect=30.0)
+
+    async def _request_with_retry(
+        self,
+        request_data: dict,
+        operation: str = "solve",
+    ) -> dict:
+        """
+        Make VROOM request with exponential backoff retry.
+
+        Args:
+            request_data: VROOM request payload
+            operation: Operation name for logging
+
+        Returns:
+            VROOM response data
+
+        Raises:
+            VROOMError: If all retries fail
+        """
+        last_error: Optional[Exception] = None
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        self.base_url,
+                        json=request_data,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+
+                # Check VROOM-specific error codes
+                if data.get("code") != 0:
+                    error_msg = data.get("error", "Unknown VROOM error")
+                    raise VROOMError(
+                        f"VROOM returned error: {error_msg}",
+                        code=data.get("code"),
+                        details=data,
+                    )
+
+                return data
+
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                logger.warning(
+                    f"VROOM {operation} HTTP error (attempt {attempt + 1}/{self.MAX_RETRIES}): "
+                    f"{e.response.status_code}"
+                )
+            except httpx.RequestError as e:
+                last_error = e
+                logger.warning(
+                    f"VROOM {operation} network error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}"
+                )
+            except VROOMError:
+                raise
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"VROOM {operation} error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}"
+                )
+
+            if attempt < self.MAX_RETRIES - 1:
+                delay = self.RETRY_BASE_DELAY * (2 ** attempt)
+                logger.info(f"Retrying VROOM {operation} in {delay}s...")
+                await asyncio.sleep(delay)
+
+        raise VROOMError(
+            f"VROOM {operation} failed after {self.MAX_RETRIES} attempts: {last_error}"
+        )
 
     @property
     def solver_type(self) -> SolverType:
@@ -249,7 +345,22 @@ class VROOMSolver(RouteSolver):
         route_date: date,
         explore: int = 5,
     ) -> VROOMSolution:
-        """Legacy solve method."""
+        """
+        Solve VRP for given orders and vehicles (legacy interface).
+
+        Args:
+            orders: List of orders to deliver
+            vehicles: List of available vehicles
+            clients_map: Map of client IDs to Client objects
+            route_date: Date for the routes
+            explore: Exploration level (higher = better quality, slower)
+
+        Returns:
+            VROOMSolution with optimized routes
+
+        Raises:
+            VROOMError: If solving fails after retries
+        """
         request_data = {
             "vehicles": self.prepare_vehicles(vehicles, route_date),
             "jobs": self.prepare_jobs(orders, clients_map, route_date),
@@ -259,13 +370,16 @@ class VROOMSolver(RouteSolver):
             },
         }
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                self.base_url,
-                json=request_data,
-            )
-            response.raise_for_status()
-            data = response.json()
+        logger.info(
+            f"Solving VRP with VROOM: {len(orders)} orders, {len(vehicles)} vehicles"
+        )
+
+        data = await self._request_with_retry(request_data, "solve")
+
+        logger.info(
+            f"VROOM solution: {len(data.get('routes', []))} routes, "
+            f"{len(data.get('unassigned', []))} unassigned"
+        )
 
         return self._parse_solution(data, orders, vehicles)
 
@@ -478,21 +592,18 @@ class VROOMSolver(RouteSolver):
 
     async def solve_raw(self, request_data: dict) -> dict:
         """
-        Send raw VROOM request.
+        Send raw VROOM request with retry logic.
 
         Args:
             request_data: VROOM-formatted request
 
         Returns:
             Raw VROOM response
+
+        Raises:
+            VROOMError: If request fails after retries
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                self.base_url,
-                json=request_data,
-            )
-            response.raise_for_status()
-            return response.json()
+        return await self._request_with_retry(request_data, "raw_solve")
 
     async def health_check(self) -> bool:
         """Check if VROOM service is available."""
@@ -513,9 +624,17 @@ class VROOMSolver(RouteSolver):
                     }
                 ],
             }
-            result = await self.solve_raw(request_data)
-            return result.get("code") == 0
-        except Exception:
+            # Use direct request without retry for health check
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+                response = await client.post(
+                    self.base_url,
+                    json=request_data,
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data.get("code") == 0
+        except Exception as e:
+            logger.debug(f"VROOM health check failed: {e}")
             return False
 
 

@@ -7,9 +7,15 @@ Provides high-quality solutions for complex routing problems:
 - Pickup and delivery
 - Multi-depot scenarios
 
+Features:
+- OSRM integration for real road distances
+- Fallback to Euclidean when OSRM unavailable
+- Cached distance matrices via Redis
+
 Documentation: https://developers.google.com/optimization/routing
 """
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
@@ -25,7 +31,9 @@ from app.services.solver_interface import (
     Location,
     TransportMode,
 )
-from app.services.osrm_client import osrm_client
+from app.services.osrm_client import osrm_client, OSRMError
+
+logger = logging.getLogger(__name__)
 
 try:
     from ortools.constraint_solver import routing_enums_pb2
@@ -56,11 +64,13 @@ class ORToolsSolver(RouteSolver):
         solution_limit: int = 100,
         first_solution_strategy: str = "PATH_CHEAPEST_ARC",
         local_search_metaheuristic: str = "GUIDED_LOCAL_SEARCH",
+        use_osrm: bool = True,
     ):
         self.time_limit_seconds = time_limit_seconds
         self.solution_limit = solution_limit
         self.first_solution_strategy = first_solution_strategy
         self.local_search_metaheuristic = local_search_metaheuristic
+        self.use_osrm = use_osrm
 
     @property
     def solver_type(self) -> SolverType:
@@ -83,52 +93,89 @@ class ORToolsSolver(RouteSolver):
         if not ORTOOLS_AVAILABLE:
             raise RuntimeError("ortools package not installed")
 
-        # Pre-fetch OSRM matrix if not provided
-        if problem.distance_matrix is None:
+        # Build location list first
+        locations = self._build_location_list(problem)
+
+        # Fetch OSRM matrices if enabled and not provided
+        distance_matrix = problem.distance_matrix
+        duration_matrix = problem.duration_matrix
+
+        if (distance_matrix is None or duration_matrix is None) and self.use_osrm:
             try:
-                # Build location list to get coordinates
-                locations = self._build_location_list(problem)
-                coordinates = [(loc.longitude, loc.latitude) for loc in locations]
-
-                # Determine profile
-                profile = "driving"
-                if problem.transport_mode == TransportMode.PEDESTRIAN:
-                    profile = "foot"
-                elif problem.transport_mode == TransportMode.BICYCLE:
-                    profile = "bicycle"
-
-                # Fetch matrix
-                matrix = await osrm_client.get_table(coordinates, profile=profile)
-                if matrix:
-                    problem.distance_matrix = matrix["distances"]
-                    problem.duration_matrix = matrix["durations"]
+                osrm_distance, osrm_duration = await self._get_osrm_matrices(locations)
+                if distance_matrix is None:
+                    distance_matrix = osrm_distance
+                if duration_matrix is None:
+                    duration_matrix = osrm_duration
+                logger.info(f"Using OSRM matrices for {len(locations)} locations")
             except Exception as e:
-                # Log error but continue (will fallback to Euclidean)
-                print(f"OSRM matrix fetch failed: {e}")
+                logger.warning(f"OSRM matrix fetch failed, using Euclidean: {e}")
+                # Will fall back to Euclidean in _solve_sync
 
         # Run in thread pool to not block event loop
         return await asyncio.get_event_loop().run_in_executor(
             None,
             self._solve_sync,
             problem,
+            locations,
+            distance_matrix,
+            duration_matrix,
         )
 
-    def _solve_sync(self, problem: RoutingProblem) -> SolutionResult:
+    async def _get_osrm_matrices(
+        self,
+        locations: list[Location],
+    ) -> tuple[list[list[int]], list[list[int]]]:
+        """
+        Fetch distance and duration matrices from OSRM.
+
+        Uses batched requests for large location sets and Redis caching.
+
+        Returns:
+            Tuple of (distance_matrix, duration_matrix) in meters and seconds
+        """
+        # Convert locations to coordinates (lon, lat) for OSRM
+        coordinates = [
+            (float(loc.longitude), float(loc.latitude))
+            for loc in locations
+        ]
+
+        # Use batched method for large sets
+        if len(coordinates) > 100:
+            result = await osrm_client.get_table_batched(coordinates)
+        else:
+            result = await osrm_client.get_table(coordinates)
+
+        # Convert to integer matrices (meters and seconds)
+        distance_matrix = [
+            [int(d) if d is not None else 999999 for d in row]
+            for row in result.distances
+        ]
+        duration_matrix = [
+            [int(d) if d is not None else 99999 for d in row]
+            for row in result.durations
+        ]
+
+        return distance_matrix, duration_matrix
+
+    def _solve_sync(
+        self,
+        problem: RoutingProblem,
+        locations: list[Location],
+        distance_matrix: Optional[list[list[int]]],
+        duration_matrix: Optional[list[list[int]]],
+    ) -> SolutionResult:
         """Synchronous solving logic."""
 
         if not problem.jobs:
             return SolutionResult(routes=[], unassigned_jobs=[])
 
-        # Build location list: depot + all job locations
-        locations = self._build_location_list(problem)
         num_locations = len(locations)
         num_vehicles = len(problem.vehicles)
 
-        # Create distance/duration matrices if not provided
-        distance_matrix = problem.distance_matrix
-        duration_matrix = problem.duration_matrix
-
+        # Fall back to Euclidean if matrices not provided
         if distance_matrix is None:
+            logger.debug("Using Euclidean distance matrix (OSRM unavailable)")
             distance_matrix = self._compute_euclidean_matrix(locations)
 
         if duration_matrix is None:
@@ -475,17 +522,14 @@ class ORToolsSolver(RouteSolver):
         if not ORTOOLS_AVAILABLE:
             raise RuntimeError("ortools package not installed")
 
-        # Fetch OSRM matrix for TSP
+        # Fetch OSRM matrix if enabled
         distance_matrix = None
-        try:
-            coordinates = [(loc.longitude, loc.latitude) for loc in locations]
-            # Default to driving for TSP unless specified (TSP doesn't assume problem context here)
-            # TODO: Add transport_mode argument to solve_tsp
-            matrix = await osrm_client.get_table(coordinates, profile="driving")
-            if matrix:
-                distance_matrix = matrix["distances"]
-        except Exception as e:
-            print(f"OSRM TSP fetch failed: {e}")
+        if self.use_osrm:
+            try:
+                distance_matrix, _ = await self._get_osrm_matrices(locations)
+                logger.info(f"Using OSRM matrix for TSP with {len(locations)} locations")
+            except Exception as e:
+                logger.warning(f"OSRM matrix fetch failed for TSP, using Euclidean: {e}")
 
         return await asyncio.get_event_loop().run_in_executor(
             None,

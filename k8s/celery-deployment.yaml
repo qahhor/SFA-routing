@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: route-optimizer
+  labels:
+    app.kubernetes.io/name: celery-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: route-optimizer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: celery-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: celery-worker
+    spec:
+      containers:
+        - name: worker
+          image: route-optimizer/backend:latest
+          imagePullPolicy: Always
+          command: ["celery", "-A", "app.core.celery_app", "worker", "-l", "info", "-c", "4"]
+          envFrom:
+            - configMapRef:
+                name: route-optimizer-config
+            - secretRef:
+                name: route-optimizer-secrets
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          livenessProbe:
+            exec:
+              command:
+                - celery
+                - -A
+                - app.core.celery_app
+                - inspect
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: route-optimizer
+  labels:
+    app.kubernetes.io/name: celery-beat
+    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/part-of: route-optimizer
+spec:
+  replicas: 1  # Only one beat scheduler!
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: celery-beat
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: celery-beat
+    spec:
+      containers:
+        - name: beat
+          image: route-optimizer/backend:latest
+          imagePullPolicy: Always
+          command: ["celery", "-A", "app.core.celery_app", "beat", "-l", "info"]
+          envFrom:
+            - configMapRef:
+                name: route-optimizer-config
+            - secretRef:
+                name: route-optimizer-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"

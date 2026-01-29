@@ -1,56 +1,326 @@
+# ==============================================
+# SFA-Routing: Production Docker Compose Override
+# ==============================================
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This file overrides development settings for production:
+# - Removes code volume mounts (uses built images)
+# - Sets production environment variables
+# - Configures resource limits
+# - Adds restart policies
+# - Optimizes database settings
+# - Adds nginx reverse proxy with SSL support
+
 version: '3.8'
 
 services:
+  # ============================================
+  # API Service
+  # ============================================
   api:
-    restart: always
-    volumes: [] # Remove dev code mounts
+    restart: unless-stopped
+    volumes: []  # Remove dev code mounts, use built image
     environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
       - LOG_LEVEL=INFO
+      - WORKERS=4
+    command: >
+      gunicorn app.main:app
+      --workers 4
+      --worker-class uvicorn.workers.UvicornWorker
+      --bind 0.0.0.0:8000
+      --timeout 120
+      --keep-alive 5
+      --access-logfile -
+      --error-logfile -
+      --capture-output
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ============================================
+  # Celery Worker
+  # ============================================
+  celery:
+    restart: unless-stopped
+    volumes: []
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+    command: >
+      celery -A app.core.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --queues=optimization,default
+      --max-tasks-per-child=1000
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ============================================
+  # Celery Beat Scheduler
+  # ============================================
+  celery-beat:
+    restart: unless-stopped
+    volumes: []
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+    command: >
+      celery -A app.core.celery_app beat
+      --loglevel=info
+      --scheduler=celery.beat:PersistentScheduler
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  db:
+    restart: unless-stopped
+    ports: []  # Don't expose in production, access via internal network
+    command: >
+      postgres
+      -c shared_buffers=512MB
+      -c effective_cache_size=1536MB
+      -c maintenance_work_mem=128MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=32MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_worker_processes=4
+      -c max_parallel_workers_per_gather=2
+      -c max_parallel_workers=4
+      -c max_connections=200
+      -c log_min_duration_statement=1000
+      -c log_checkpoints=on
+      -c log_connections=on
+      -c log_disconnections=on
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./backups:/backups
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-routeuser} -d ${POSTGRES_DB:-routes}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ============================================
+  # Redis Cache
+  # ============================================
+  redis:
+    restart: unless-stopped
+    ports: []  # Don't expose in production
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 300
+      --timeout 0
+      --tcp-backlog 511
+      --databases 16
+    volumes:
+      - redis_data_prod:/data
     deploy:
       resources:
         limits:
           cpus: '1.0'
-          memory: 1G
+          memory: 768M
         reservations:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  celery:
-    restart: always
+  # ============================================
+  # Frontend (Production Build)
+  # ============================================
+  frontend:
+    restart: unless-stopped
     volumes: []
+    environment:
+      - NODE_ENV=production
+    command: npm run preview -- --host --port 3000
     deploy:
       resources:
         limits:
-          memory: 1G
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  celery-beat:
-    restart: always
-    volumes: []
-
-  frontend:
-    restart: always
-    volumes: []
-    # In prod, frontend should be built as static asset and served by Nginx
-    # But for this Docker setup, serving via simple server or Nginx
-    command: npm run preview -- --host # Serve built assets
-
+  # ============================================
+  # Nginx Reverse Proxy
+  # ============================================
   nginx:
-    image: nginx:alpine
+    image: nginx:1.25-alpine
+    restart: unless-stopped
     ports:
       - "80:80"
-      # - "443:443" # Uncomment when SSL certs are ready
+      - "443:443"
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     networks:
       - route-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
-  # Production DB tuning (if using containerized DB)
-  db:
-    command: postgres -c shared_buffers=256MB -c work_mem=16MB
-    volumes:
-      - postgres_data_prod:/var/lib/postgresql/data
+  # ============================================
+  # OSRM (Optional - use external in production)
+  # ============================================
+  osrm:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ============================================
+  # VROOM (Optional - use external in production)
+  # ============================================
+  vroom:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ============================================
+# Production Volumes
+# ============================================
 volumes:
   postgres_data_prod:
+    driver: local
+  redis_data_prod:
+    driver: local
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  route-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
