@@ -136,6 +136,99 @@ class CacheService:
         except Exception:
             return False
 
+    # R10: Redis Pipeline Operations for batch efficiency
+    async def mget(self, keys: list[str]) -> list[Optional[Any]]:
+        """
+        Batch get multiple keys using pipeline.
+
+        Performance: O(1) network round trip vs O(n) for individual gets.
+
+        Args:
+            keys: List of cache keys to retrieve
+
+        Returns:
+            List of values (None for missing keys)
+        """
+        if not keys:
+            return []
+
+        redis = await self.get_redis()
+        if redis is None:
+            return [None] * len(keys)
+
+        try:
+            async with redis.pipeline() as pipe:
+                for key in keys:
+                    pipe.get(key)
+                results = await pipe.execute()
+
+            return [
+                json.loads(r) if r else None
+                for r in results
+            ]
+        except Exception:
+            return [None] * len(keys)
+
+    async def mset(
+        self,
+        items: dict[str, Any],
+        ttl: Union[int, timedelta] = 3600,
+    ) -> bool:
+        """
+        Batch set multiple keys using pipeline.
+
+        Performance: O(1) network round trip vs O(n) for individual sets.
+
+        Args:
+            items: Dict of key -> value to cache
+            ttl: Time to live in seconds or timedelta
+
+        Returns:
+            True if successful
+        """
+        if not items:
+            return True
+
+        redis = await self.get_redis()
+        if redis is None:
+            return False
+
+        try:
+            if isinstance(ttl, timedelta):
+                ttl = int(ttl.total_seconds())
+
+            async with redis.pipeline() as pipe:
+                for key, value in items.items():
+                    serialized = json.dumps(value, default=str)
+                    pipe.setex(key, ttl, serialized)
+                await pipe.execute()
+
+            return True
+        except Exception:
+            return False
+
+    async def mdelete(self, keys: list[str]) -> int:
+        """
+        Batch delete multiple keys.
+
+        Args:
+            keys: List of keys to delete
+
+        Returns:
+            Number of keys deleted
+        """
+        if not keys:
+            return 0
+
+        redis = await self.get_redis()
+        if redis is None:
+            return 0
+
+        try:
+            return await redis.delete(*keys)
+        except Exception:
+            return 0
+
     async def ttl(self, key: str) -> Optional[int]:
         """Get remaining TTL of a key."""
         redis = await self.get_redis()
