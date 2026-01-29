@@ -530,8 +530,8 @@ class WeeklyPlanner:
             )
         except Exception as e:
             # Fallback
-             return self._create_fallback_plan(agent, clients, route_date)
-        
+            return self._create_fallback_plan(agent, clients, route_date)
+
         # Parse result
         visits = []
         if solution.routes:
