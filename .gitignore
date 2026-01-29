@@ -45,6 +45,11 @@ htmlcov/
 .env
 .env.local
 .env.*.local
+.env.production
+backend/.env
+backend/.env.production
+!backend/.env.example
+!backend/.env.production.example
 
 # Logs
 *.log
@@ -94,3 +99,43 @@ backups/*.sql.gz
 # Deployment logs
 logs/*.log
 deploy_*.log
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.db
+celerybeat.pid
+
+# Coverage reports
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Profiling
+.prof
+
+# Local development overrides
+docker-compose.override.yml
+*.local.yml
+
+# Secrets (never commit)
+*.pem
+*.key
+secrets/
+.secrets/
+
+# Large data files
+*.osm.pbf
+*.osrm
+*.osrm.*
+
+# Sentry
+.sentryclirc
