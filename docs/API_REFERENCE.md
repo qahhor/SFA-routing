@@ -125,3 +125,166 @@ Broadcasts a message to connected clients (dispatchers/agents).
   "priority": "high"
 }
 ```
+
+---
+
+## 6. Solver Selection API (v1.2)
+
+### Smart Solver Selection
+**POST** `/api/v1/delivery/optimize`
+
+The system automatically selects the best solver based on problem characteristics:
+
+| Problem Size | Constraints | Selected Solver |
+|--------------|-------------|-----------------|
+| < 150 jobs | Simple | VROOM |
+| < 300 jobs | Complex | OR-Tools |
+| > 300 jobs | Any | Genetic Algorithm |
+| Fallback | Any failure | Greedy + 2-opt |
+
+**Request with solver hint:**
+```json
+{
+  "order_ids": ["uuid1", "uuid2"],
+  "vehicle_ids": ["uuidV1"],
+  "route_date": "2024-01-24",
+  "solver_preference": "auto"  // or "vroom", "ortools", "genetic"
+}
+```
+
+---
+
+## 7. Event Pipeline API (v1.2)
+
+### Submit Event
+**POST** `/api/v1/events`
+
+Submit events to the event-driven processing pipeline.
+
+**Request:**
+```json
+{
+  "event_type": "gps_update",
+  "agent_id": "uuid",
+  "latitude": 41.311,
+  "longitude": 69.279,
+  "priority": "normal"
+}
+```
+
+**Event Types:**
+| Type | Priority | Description |
+|------|----------|-------------|
+| `gps_update` | normal | Agent location update |
+| `traffic_alert` | high | Traffic condition change |
+| `order_cancel` | high | Order cancellation |
+| `visit_complete` | normal | Visit status update |
+
+---
+
+## 8. Geo Security API (v1.2)
+
+### Anonymize Location
+**POST** `/api/v1/geo/anonymize`
+
+Anonymize coordinates for analytics or sharing.
+
+**Request:**
+```json
+{
+  "latitude": 41.311081,
+  "longitude": 69.279737,
+  "level": "medium"
+}
+```
+
+**Response:**
+```json
+{
+  "anonymized_latitude": 41.31,
+  "anonymized_longitude": 69.28,
+  "precision_meters": 1000
+}
+```
+
+**Levels:** `low` (3 decimals, ~100m), `medium` (2 decimals, ~1km), `high` (1 decimal, ~10km)
+
+### GDPR Data Export
+**GET** `/api/v1/gdpr/export/{user_id}`
+
+Export all user data for GDPR compliance (Data Portability).
+
+**Response:**
+```json
+{
+  "user_id": "uuid",
+  "export_date": "2024-01-24T10:00:00Z",
+  "data": {
+    "visits": [...],
+    "locations": [...],
+    "audit_logs": [...]
+  }
+}
+```
+
+### GDPR Data Deletion
+**DELETE** `/api/v1/gdpr/user/{user_id}`
+
+Delete all user data for GDPR compliance (Right to Erasure).
+
+---
+
+## 9. Spatial Index API (v1.2)
+
+### Query Nearby Entities
+**GET** `/api/v1/spatial/nearby`
+
+Find entities within a radius using H3 spatial indexing.
+
+**Query Parameters:**
+- `lat` (float): Center latitude
+- `lon` (float): Center longitude
+- `radius_meters` (int): Search radius (default: 1000)
+- `entity_type` (string): "agent", "client", or "all"
+
+**Response:**
+```json
+{
+  "center": {"lat": 41.311, "lon": 69.279},
+  "radius_meters": 1000,
+  "results": [
+    {"id": "uuid", "type": "client", "distance_m": 250},
+    {"id": "uuid", "type": "agent", "distance_m": 500}
+  ]
+}
+```
+
+---
+
+## 10. Cache Management API (v1.2)
+
+### Warm Caches
+**POST** `/api/v1/admin/cache/warm`
+
+Trigger proactive cache warming for specific resources.
+
+**Request:**
+```json
+{
+  "targets": ["distance_matrices", "reference_data", "daily_plans"],
+  "agent_ids": ["uuid1", "uuid2"]  // optional
+}
+```
+
+### Invalidate Cache
+**DELETE** `/api/v1/admin/cache/invalidate`
+
+Invalidate specific cache entries.
+
+**Request:**
+```json
+{
+  "patterns": ["agent:*", "matrix:*:uuid"],
+  "reason": "data_update"
+}
+```
