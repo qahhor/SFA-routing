@@ -19,17 +19,27 @@ class Settings(BaseSettings):
     # API
     API_V1_PREFIX: str = "/api/v1"
 
-    # Database
+    # Database (R8: Optimized connection pool)
     DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost:5432/routes"
-    DATABASE_POOL_SIZE: int = 10
-    DATABASE_MAX_OVERFLOW: int = 20
-    DATABASE_POOL_RECYCLE: int = 3600  # Recycle connections after 1 hour
+    DATABASE_POOL_SIZE: int = 20  # Increased from 10
+    DATABASE_MAX_OVERFLOW: int = 40  # Increased from 20
+    DATABASE_POOL_RECYCLE: int = 1800  # 30 min (reduced from 1 hour for freshness)
     DATABASE_POOL_TIMEOUT: int = 30  # Wait max 30s for a connection
     DATABASE_POOL_PRE_PING: bool = True  # Verify connections before use
     DATABASE_STATEMENT_TIMEOUT: int = 30000  # Statement timeout in ms (30s)
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
+
+    # Cache TTL Strategy (R15: Tiered TTL)
+    CACHE_TTL_DISTANCE_MATRIX: int = 604800  # 7 days - road networks rarely change
+    CACHE_TTL_ROAD_NETWORK: int = 2592000  # 30 days
+    CACHE_TTL_CLIENT_LIST: int = 3600  # 1 hour - reference data
+    CACHE_TTL_AGENT_SCHEDULE: int = 1800  # 30 min - semi-static
+    CACHE_TTL_AGENT_LOCATION: int = 60  # 1 min - dynamic
+    CACHE_TTL_ACTIVE_ROUTES: int = 300  # 5 min - frequently updated
+    CACHE_TTL_GPS_POSITION: int = 10  # 10 sec - real-time
+    CACHE_TTL_WEEKLY_PLAN: int = 3600  # 1 hour
 
     # External Services
     OSRM_URL: str = "http://localhost:5000"
