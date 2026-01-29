@@ -119,3 +119,112 @@ def sample_vehicle_data():
         "work_end": "20:00:00",
         "is_active": True,
     }
+
+
+# ============================================================
+# New Module Test Fixtures (R1-R21)
+# ============================================================
+
+@pytest.fixture
+def mock_osrm_client():
+    """Mock OSRM client for tests."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    client = MagicMock()
+
+    async def mock_get_table(coords, **kwargs):
+        n = len(coords)
+        return MagicMock(
+            durations=[[100.0] * n for _ in range(n)],
+            distances=[[1000.0] * n for _ in range(n)],
+        )
+
+    client.get_table = mock_get_table
+    return client
+
+
+@pytest.fixture
+def mock_redis_client():
+    """Mock Redis client for tests."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    redis = MagicMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.set = AsyncMock()
+    redis.setex = AsyncMock()
+    redis.mset = AsyncMock()
+    redis.delete = AsyncMock()
+    redis.delete_pattern = AsyncMock(return_value=0)
+    redis.scan = AsyncMock(return_value=(0, []))
+    return redis
+
+
+@pytest.fixture
+def mock_websocket_manager():
+    """Mock WebSocket manager for tests."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    manager = MagicMock()
+    manager.broadcast = AsyncMock()
+    manager.send_to_user = AsyncMock()
+    return manager
+
+
+@pytest.fixture
+def sample_coordinates():
+    """Sample Tashkent coordinates for geo tests."""
+    return [
+        (41.311081, 69.279737),  # Center
+        (41.321081, 69.289737),  # NE
+        (41.301081, 69.289737),  # SE
+        (41.301081, 69.269737),  # SW
+        (41.321081, 69.269737),  # NW
+    ]
+
+
+@pytest.fixture
+def sample_routing_jobs(sample_coordinates):
+    """Sample routing jobs for solver tests."""
+    from app.services.solver_interface import Job, Location
+
+    return [
+        Job(
+            id=uuid4(),
+            location=Location(
+                latitude=lat,
+                longitude=lon,
+                address=f"Point {i}",
+            ),
+            priority=1,
+            demand_kg=10.0,
+        )
+        for i, (lat, lon) in enumerate(sample_coordinates)
+    ]
+
+
+@pytest.fixture
+def sample_routing_vehicles():
+    """Sample vehicles for solver tests."""
+    from datetime import time
+    from app.services.solver_interface import Vehicle
+
+    return [
+        Vehicle(
+            id=uuid4(),
+            capacity_kg=100.0,
+            work_start=time(8, 0),
+            work_end=time(18, 0),
+        ),
+        Vehicle(
+            id=uuid4(),
+            capacity_kg=80.0,
+            work_start=time(8, 0),
+            work_end=time(18, 0),
+        ),
+    ]
+
+
+@pytest.fixture
+def encryption_key():
+    """Encryption key for security tests."""
+    return "test-encryption-key-for-unit-tests-only"
