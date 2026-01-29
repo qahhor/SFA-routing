@@ -87,7 +87,7 @@ async def _generate_weekly_plan(
         clients_result = await db.execute(
             select(Client).where(
                 (Client.agent_id == agent_id) &
-                (Client.is_active == True)
+                (Client.is_active.is_(True))
             )
         )
         clients = list(clients_result.scalars().all())
