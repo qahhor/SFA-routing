@@ -536,10 +536,10 @@ class WeeklyPlanner:
         visits = []
         if solution.routes:
             route = solution.routes[0]
-            
+
             sequence = 0
             for step in route.steps:
-                if step.step_type == "job" and step.job_id: # job_id is client.id (UUID)
+                if step.step_type == "job" and step.job_id:  # job_id is client.id (UUID)
                     client = clients_map.get(step.job_id)
                     if not client:
                         continue
