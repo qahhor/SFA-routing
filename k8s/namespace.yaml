@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: route-optimizer
+  labels:
+    app.kubernetes.io/name: route-optimizer
+    app.kubernetes.io/part-of: sfa-routing
