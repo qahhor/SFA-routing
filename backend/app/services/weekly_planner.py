@@ -530,22 +530,22 @@ class WeeklyPlanner:
             )
         except Exception as e:
             # Fallback
-             return self._create_fallback_plan(agent, clients, route_date)
-        
+            return self._create_fallback_plan(agent, clients, route_date)
+
         # Parse result
         visits = []
         if solution.routes:
             route = solution.routes[0]
-            
+
             sequence = 0
             for step in route.steps:
-                if step.step_type == "job" and step.job_id: # job_id is client.id (UUID)
+                if step.step_type == "job" and step.job_id:  # job_id is client.id (UUID)
                     client = clients_map.get(step.job_id)
                     if not client:
                         continue
-                        
+
                     sequence += 1
-                    
+
                     # Check lunch overlap
                     arrival_time = step.arrival_time.time()
                     is_during_lunch = (
