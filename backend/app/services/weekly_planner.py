@@ -543,9 +543,9 @@ class WeeklyPlanner:
                     client = clients_map.get(step.job_id)
                     if not client:
                         continue
-                        
+
                     sequence += 1
-                    
+
                     # Check lunch overlap
                     arrival_time = step.arrival_time.time()
                     is_during_lunch = (

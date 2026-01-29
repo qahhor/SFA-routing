@@ -7,7 +7,6 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from celery import shared_task
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import selectinload
@@ -86,8 +85,8 @@ async def _generate_weekly_plan(
         # Get agent's clients
         clients_result = await db.execute(
             select(Client).where(
-                (Client.agent_id == agent_id) &
-                (Client.is_active.is_(True))
+                (Client.agent_id == agent_id)
+                & (Client.is_active.is_(True))
             )
         )
         clients = list(clients_result.scalars().all())
