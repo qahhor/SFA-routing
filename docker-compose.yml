@@ -117,21 +117,6 @@ services:
     networks:
       - route-network
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3001:3000"
-    environment:
-      - VITE_API_URL=http://localhost:8000/api/v1
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    command: npm run dev -- --host
-    networks:
-      - route-network
-
 volumes:
   postgres_data:
   redis_data:

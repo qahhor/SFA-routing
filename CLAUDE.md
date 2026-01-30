@@ -176,13 +176,14 @@ plan = await weekly_planner_kz.generate_weekly_plan(agent, clients, week_start)
 | **Greedy+2opt** | Fallback с оптимизацией | При сбое других солверов, 85-90% качество |
 | **SmartSelector** | Автовыбор солвера | Анализ задачи → оптимальный solver |
 
-### Frontend
-| Компонент | Технология |
-|-----------|------------|
-| Framework | React 18 + TypeScript |
-| State | Zustand + React Query |
-| Maps | Leaflet + OpenStreetMap |
-| Styles | TailwindCSS |
+### API Clients
+| Клиент | Интеграция |
+|--------|------------|
+| Mobile App | REST API + WebSocket |
+| ERP (SmartUp, 1C) | REST API + Webhooks |
+| Swagger UI | `/api/v1/docs` (встроено) |
+
+> **Note:** This is a headless API service without frontend UI.
 
 ---
 
@@ -243,14 +244,6 @@ route-optimizer/
 │   ├── tests/
 │   ├── alembic/
 │   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/           # React компоненты
-│   │   ├── pages/                # Страницы
-│   │   ├── services/api.ts       # API клиент
-│   │   ├── stores/               # Zustand stores
-│   │   └── types/                # TypeScript types
-│   └── Dockerfile
 ├── docker/
 │   ├── osrm/                     # OSRM конфигурация
 │   └── vroom/                    # VROOM конфигурация
@@ -904,11 +897,9 @@ services:
     environment:
       VROOM_ROUTER: osrm
       OSRM_URL: http://osrm:5000
-
-  frontend:
-    build: ./frontend
-    ports: ["3001:3000"]
 ```
+
+> **Note:** This is a headless API service. Clients (mobile apps, ERP) interact via REST API.
 
 ---
 

@@ -53,7 +53,7 @@ Enterprise-grade microservice for optimizing routes for field sales representati
 
 ```mermaid
 graph TD
-    Client[Mobile/Web Client] -->|HTTPS| Nginx[Nginx Proxy]
+    Client[Mobile App / ERP] -->|HTTPS| Nginx[Nginx Proxy]
     Nginx -->|Proxy| API[FastAPI Backend]
 
     subgraph "Core Services"
@@ -81,6 +81,8 @@ graph TD
         API -->|PubSub| Redis
     end
 ```
+
+> **Note:** This is a headless API service. All clients (mobile apps, ERP systems) interact via REST API and WebSocket.
 
 ---
 
