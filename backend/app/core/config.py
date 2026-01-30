@@ -56,7 +56,13 @@ class Settings(BaseSettings):
 
     def validate_production_settings(self) -> None:
         """Validate critical settings for production environment."""
+        import logging
+        import warnings
+
+        logger = logging.getLogger(__name__)
+
         if self.ENVIRONMENT == "production":
+            # Critical security checks
             if not self.SECRET_KEY or self.SECRET_KEY == "":
                 raise ValueError("SECRET_KEY must be set in production")
             if len(self.SECRET_KEY) < 32:
@@ -67,6 +73,23 @@ class Settings(BaseSettings):
                 raise ValueError("GEO_ENCRYPTION_KEY must be set in production")
             if len(self.GEO_ENCRYPTION_KEY) < 32:
                 raise ValueError("GEO_ENCRYPTION_KEY must be at least 32 characters")
+
+            # Debug mode check
+            if self.DEBUG:
+                raise ValueError("DEBUG must be False in production")
+
+            # CORS security check
+            insecure_origins = [o for o in self.CORS_ORIGINS if "localhost" in o or "127.0.0.1" in o]
+            if insecure_origins:
+                warnings.warn(
+                    f"CORS_ORIGINS contains localhost entries: {insecure_origins}. "
+                    "Consider removing for production.",
+                    UserWarning,
+                )
+
+            # Monitoring recommendations
+            if not self.SENTRY_DSN:
+                logger.warning("SENTRY_DSN not configured. Error tracking disabled.")
 
     # API Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
