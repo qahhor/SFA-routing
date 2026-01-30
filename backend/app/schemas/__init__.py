@@ -44,6 +44,13 @@ from app.schemas.vehicle import (
     VehicleResponse,
     VehicleUpdate,
 )
+from app.schemas.field_routing import (
+    FieldRoutingRequest,
+    FieldRoutingResponse,
+    RoutingMode,
+    ScheduledVisit,
+    VisitPoint,
+)
 
 __all__ = [
     # Agent
@@ -87,4 +94,10 @@ __all__ = [
     "LoginResponse",
     "RegisterRequest",
     "RegisterResponse",
+    # Field Routing
+    "FieldRoutingRequest",
+    "FieldRoutingResponse",
+    "RoutingMode",
+    "ScheduledVisit",
+    "VisitPoint",
 ]

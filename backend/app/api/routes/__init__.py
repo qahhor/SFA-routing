@@ -12,6 +12,7 @@ from app.api.routes import (
     clients,
     delivery,
     export,
+    field_routing,
     health,
     jobs,
     planning,
@@ -36,3 +37,4 @@ api_router.include_router(export.router)
 api_router.include_router(bulk.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(realtime.router)
+api_router.include_router(field_routing.router)  # Field team routing
