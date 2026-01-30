@@ -7,6 +7,7 @@ Features:
 - Correlation ID support
 - Performance timing
 """
+
 import json
 import logging
 import sys

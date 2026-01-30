@@ -1,6 +1,7 @@
 """
 Background optimization tasks using Celery.
 """
+
 import asyncio
 from datetime import date, datetime
 from decimal import Decimal
@@ -8,18 +9,18 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
 from app.core.celery_app import celery_app
+from app.core.config import settings
 from app.models.agent import Agent
 from app.models.client import Client
 from app.models.delivery_order import DeliveryOrder, OrderStatus
 from app.models.delivery_route import DeliveryRoute, DeliveryRouteStop, RouteStatus
 from app.models.vehicle import Vehicle
 from app.models.visit_plan import VisitPlan, VisitStatus
-from app.services import WeeklyPlanner, RouteOptimizer
+from app.services import RouteOptimizer, WeeklyPlanner
 
 
 def get_async_session() -> async_sessionmaker[AsyncSession]:
@@ -56,12 +57,14 @@ def generate_weekly_plan_task(
     Returns:
         Dictionary with plan summary
     """
-    return run_async(_generate_weekly_plan(
-        UUID(agent_id),
-        date.fromisoformat(week_start_date),
-        week_number,
-        self.request.id,
-    ))
+    return run_async(
+        _generate_weekly_plan(
+            UUID(agent_id),
+            date.fromisoformat(week_start_date),
+            week_number,
+            self.request.id,
+        )
+    )
 
 
 async def _generate_weekly_plan(
@@ -83,10 +86,7 @@ async def _generate_weekly_plan(
 
         # Get agent's clients
         clients_result = await db.execute(
-            select(Client).where(
-                (Client.agent_id == agent_id)
-                & (Client.is_active.is_(True))
-            )
+            select(Client).where((Client.agent_id == agent_id) & (Client.is_active.is_(True)))
         )
         clients = list(clients_result.scalars().all())
 
@@ -150,12 +150,14 @@ def optimize_delivery_routes_task(
     Returns:
         Dictionary with optimization results
     """
-    return run_async(_optimize_delivery_routes(
-        [UUID(oid) for oid in order_ids],
-        [UUID(vid) for vid in vehicle_ids],
-        date.fromisoformat(route_date),
-        self.request.id,
-    ))
+    return run_async(
+        _optimize_delivery_routes(
+            [UUID(oid) for oid in order_ids],
+            [UUID(vid) for vid in vehicle_ids],
+            date.fromisoformat(route_date),
+            self.request.id,
+        )
+    )
 
 
 async def _optimize_delivery_routes(
@@ -170,9 +172,7 @@ async def _optimize_delivery_routes(
     async with AsyncSessionLocal() as db:
         # Get orders
         orders_result = await db.execute(
-            select(DeliveryOrder)
-            .options(selectinload(DeliveryOrder.client))
-            .where(DeliveryOrder.id.in_(order_ids))
+            select(DeliveryOrder).options(selectinload(DeliveryOrder.client)).where(DeliveryOrder.id.in_(order_ids))
         )
         orders = list(orders_result.scalars().all())
 
@@ -180,9 +180,7 @@ async def _optimize_delivery_routes(
             return {"status": "error", "message": "No orders found"}
 
         # Get vehicles
-        vehicles_result = await db.execute(
-            select(Vehicle).where(Vehicle.id.in_(vehicle_ids))
-        )
+        vehicles_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(vehicle_ids)))
         vehicles = list(vehicles_result.scalars().all())
 
         if not vehicles:

@@ -8,6 +8,7 @@ Performance:
 - Sequential 300x300: ~18 seconds (9 requests * 2s each)
 - Parallel 300x300: ~6 seconds (3 batches * 2s with concurrency=4)
 """
+
 import asyncio
 import logging
 from typing import Optional
@@ -89,8 +90,10 @@ class ParallelMatrixComputer:
                 tasks.append(
                     self._compute_batch(
                         coordinates,
-                        i_start, i_end,
-                        j_start, j_end,
+                        i_start,
+                        i_end,
+                        j_start,
+                        j_end,
                         profile,
                     )
                 )
@@ -169,7 +172,10 @@ class ParallelMatrixComputer:
                 logger.error(f"Batch [{i_start}:{i_end}][{j_start}:{j_end}] failed: {e}")
                 # Return zeros for failed batch
                 return (
-                    i_start, i_end, j_start, j_end,
+                    i_start,
+                    i_end,
+                    j_start,
+                    j_end,
                     np.zeros((i_end - i_start, j_end - j_start)),
                     np.zeros((i_end - i_start, j_end - j_start)),
                 )
@@ -257,10 +263,12 @@ class MatrixCache:
         import json
 
         key = self._compute_key(coordinates, profile)
-        data = json.dumps({
-            "durations": durations.tolist(),
-            "distances": distances.tolist(),
-        })
+        data = json.dumps(
+            {
+                "durations": durations.tolist(),
+                "distances": distances.tolist(),
+            }
+        )
 
         await self.redis.setex(key, self.ttl, data)
 
@@ -281,9 +289,7 @@ class CachedParallelMatrixComputer:
         batch_size: int = 100,
         cache_ttl: int = 604800,
     ):
-        self.computer = ParallelMatrixComputer(
-            osrm_client, max_concurrent, batch_size
-        )
+        self.computer = ParallelMatrixComputer(osrm_client, max_concurrent, batch_size)
         self.cache = MatrixCache(redis_client, cache_ttl)
 
     async def compute(

@@ -6,6 +6,7 @@ Handles:
 - Broadcasting events (GPS updates, order status)
 - Targeted notifications
 """
+
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -21,7 +22,7 @@ class WebSocketManager:
         # active_connections: dict[user_id, list[WebSocket]]
         # A user can have multiple connections (multiple tabs/devices)
         self.active_connections: Dict[UUID, List[WebSocket]] = {}
-        
+
         # Topic subscriptions (e.g., "dispatchers", "agent:{id}")
         # subscriptions: dict[topic, list[WebSocket]]
         self.subscriptions: Dict[str, List[WebSocket]] = {}
@@ -40,7 +41,7 @@ class WebSocketManager:
                 self.active_connections[user_id].remove(websocket)
             if not self.active_connections[user_id]:
                 del self.active_connections[user_id]
-        
+
         # Remove from subscriptions
         for topic in self.subscriptions:
             if websocket in self.subscriptions[topic]:

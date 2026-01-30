@@ -6,6 +6,7 @@ Provides caching for:
 - Reference data (agents, vehicles, clients)
 - Optimization results
 """
+
 import hashlib
 import json
 from datetime import timedelta
@@ -34,6 +35,7 @@ class CacheService:
         if self._redis is None:
             try:
                 import redis.asyncio as redis
+
                 self._redis = redis.from_url(
                     self.redis_url,
                     encoding="utf-8",
@@ -65,12 +67,12 @@ class CacheService:
     ) -> bool:
         """
         Set value in cache.
-        
+
         Args:
             key: Cache key
             value: Value to cache (must be JSON serializable)
             ttl: Time to live in seconds or timedelta
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -103,10 +105,10 @@ class CacheService:
     async def delete_pattern(self, pattern: str) -> int:
         """
         Delete all keys matching pattern.
-        
+
         Args:
             pattern: Redis key pattern (e.g., "matrix:*")
-            
+
         Returns:
             Number of deleted keys
         """
@@ -162,10 +164,7 @@ class CacheService:
                     pipe.get(key)
                 results = await pipe.execute()
 
-            return [
-                json.loads(r) if r else None
-                for r in results
-            ]
+            return [json.loads(r) if r else None for r in results]
         except Exception:
             return [None] * len(keys)
 
@@ -244,11 +243,11 @@ class CacheService:
     def make_key(*args, prefix: str = "cache") -> str:
         """
         Generate cache key from arguments.
-        
+
         Args:
             *args: Values to include in key
             prefix: Key prefix
-            
+
         Returns:
             Cache key string
         """
@@ -270,7 +269,7 @@ cache = CacheService()
 class DistanceMatrixCache:
     """
     Specialized cache for OSRM distance matrices.
-    
+
     Matrices are cached for 24 hours by default since
     road networks don't change frequently.
     """
@@ -313,7 +312,7 @@ class DistanceMatrixCache:
     async def invalidate_region(self, region: str) -> int:
         """
         Invalidate all cached matrices for a region.
-        
+
         Used when road data is updated.
         """
         pattern = f"{self.prefix}:*"
@@ -323,7 +322,7 @@ class DistanceMatrixCache:
 class ReferenceDataCache:
     """
     Cache for reference data (agents, vehicles, clients).
-    
+
     Shorter TTL (5 minutes) since this data may change more frequently.
     """
 
@@ -376,12 +375,13 @@ def cached(
 ):
     """
     Decorator for caching async function results.
-    
+
     Usage:
         @cached("my_function", ttl=600)
         async def my_expensive_function(arg1, arg2):
             ...
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> T:
@@ -405,4 +405,5 @@ def cached(
             return result
 
         return wrapper
+
     return decorator

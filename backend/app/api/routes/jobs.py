@@ -7,16 +7,16 @@ Provides API for:
 - Listing jobs for a client
 - Cancelling jobs
 """
+
 import logging
-from datetime import datetime
 from typing import Optional
 
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.core.celery_app import celery_app
 from app.core.auth import get_api_client
-from app.core.rate_limit import limiter, RateLimits
+from app.core.celery_app import celery_app
+from app.core.rate_limit import RateLimits, limiter
 from app.models.api_client import APIClient
 from app.schemas.job import (
     DeliveryRoutesJobParams,
@@ -56,8 +56,7 @@ def celery_state_to_job_status(state: str) -> JobStatus:
     response_model=JobResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Submit Weekly Plan Generation Job",
-    description="Submit a background job to generate weekly plan for an agent. "
-                "Returns job ID for status tracking.",
+    description="Submit a background job to generate weekly plan for an agent. " "Returns job ID for status tracking.",
 )
 @limiter.limit(RateLimits.OPTIMIZE_ROUTES)
 async def submit_weekly_plan_job(
@@ -93,8 +92,7 @@ async def submit_weekly_plan_job(
     response_model=JobResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Submit Delivery Routes Optimization Job",
-    description="Submit a background job to optimize delivery routes. "
-                "Returns job ID for status tracking.",
+    description="Submit a background job to optimize delivery routes. " "Returns job ID for status tracking.",
 )
 @limiter.limit(RateLimits.OPTIMIZE_ROUTES)
 async def submit_delivery_routes_job(
@@ -109,7 +107,7 @@ async def submit_delivery_routes_job(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Too many orders. Maximum: {api_client.max_points_per_request}, "
-                   f"Provided: {total_points}. Upgrade your tier for higher limits.",
+            f"Provided: {total_points}. Upgrade your tier for higher limits.",
         )
 
     # Submit task to Celery
@@ -122,10 +120,7 @@ async def submit_delivery_routes_job(
         headers={"client_id": str(api_client.id)},
     )
 
-    logger.info(
-        f"Queued delivery optimization job {task.id} "
-        f"with {len(params.order_ids)} orders"
-    )
+    logger.info(f"Queued delivery optimization job {task.id} " f"with {len(params.order_ids)} orders")
 
     return JobResponse(
         job_id=task.id,
@@ -232,24 +227,28 @@ async def list_jobs(
     for worker, tasks in scheduled.items():
         for task in tasks[:limit]:
             if "id" in task:
-                items.append(JobResponse(
-                    job_id=task["id"],
-                    job_type=JobType.DELIVERY_ROUTES,
-                    status=JobStatus.PENDING,
-                    message="Scheduled",
-                ))
+                items.append(
+                    JobResponse(
+                        job_id=task["id"],
+                        job_type=JobType.DELIVERY_ROUTES,
+                        status=JobStatus.PENDING,
+                        message="Scheduled",
+                    )
+                )
 
     # Get active tasks
     active = inspect.active() or {}
     for worker, tasks in active.items():
         for task in tasks[:limit]:
             if "id" in task:
-                items.append(JobResponse(
-                    job_id=task["id"],
-                    job_type=JobType.DELIVERY_ROUTES,
-                    status=JobStatus.STARTED,
-                    message="In progress",
-                ))
+                items.append(
+                    JobResponse(
+                        job_id=task["id"],
+                        job_type=JobType.DELIVERY_ROUTES,
+                        status=JobStatus.STARTED,
+                        message="In progress",
+                    )
+                )
 
     # Filter by status if provided
     if status_filter:

@@ -7,21 +7,19 @@ Security features for geolocation data:
 - R20: Audit logging for geo data access
 - R21: GDPR compliance (export, deletion)
 """
-import hashlib
-import hmac
+
+import base64
 import json
 import logging
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 from uuid import UUID, uuid4
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-import base64
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +27,7 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # R18: Data Encryption at Rest
 # ============================================================
+
 
 class CoordinateEncryptor:
     """
@@ -67,11 +66,13 @@ class CoordinateEncryptor:
         Returns:
             Base64-encoded encrypted string
         """
-        data = json.dumps({
-            "lat": latitude,
-            "lon": longitude,
-            "ts": datetime.utcnow().isoformat(),
-        }).encode()
+        data = json.dumps(
+            {
+                "lat": latitude,
+                "lon": longitude,
+                "ts": datetime.utcnow().isoformat(),
+            }
+        ).encode()
 
         encrypted = self.cipher.encrypt(data)
         return encrypted.decode()
@@ -110,6 +111,7 @@ class CoordinateEncryptor:
 # ============================================================
 # R19: Location Anonymization
 # ============================================================
+
 
 class AnonymizationLevel(str, Enum):
     """Level of location anonymization."""
@@ -214,7 +216,8 @@ class LocationAnonymizer:
         except ImportError:
             # Fallback if H3 not available
             return cls.anonymize(
-                latitude, longitude,
+                latitude,
+                longitude,
                 AnonymizationLevel.HIGH,
             )
 
@@ -299,6 +302,7 @@ class LocationAnonymizer:
 # ============================================================
 # R20: Geo Audit Logging
 # ============================================================
+
 
 class GeoAccessAction(str, Enum):
     """Types of geo data access actions."""
@@ -408,7 +412,7 @@ class GeoAuditLogger:
                             "records_count": entry.records_count,
                             "api_endpoint": entry.api_endpoint,
                             "request_id": entry.request_id,
-                        }
+                        },
                     )
                 await db.commit()
 
@@ -439,6 +443,7 @@ class GeoAuditLogger:
 # ============================================================
 # R21: GDPR Compliance
 # ============================================================
+
 
 @dataclass
 class GDPRExportResult:
@@ -503,7 +508,7 @@ class GDPRComplianceService:
         """
         result = GDPRExportResult(user_id=user_id)
 
-        async with self.db_session_factory() as db:
+        async with self.db_session_factory():
             # Export personal data
             # (Implementation depends on User model)
             result.personal_data = {
@@ -523,13 +528,15 @@ class GDPRComplianceService:
 
         # Log the export
         if self.audit_logger:
-            await self.audit_logger.log(GeoAccessLog(
-                user_id=requester_id or user_id,
-                action=GeoAccessAction.BULK_EXPORT,
-                resource_type="user_data",
-                resource_id=user_id,
-                reason="gdpr_export",
-            ))
+            await self.audit_logger.log(
+                GeoAccessLog(
+                    user_id=requester_id or user_id,
+                    action=GeoAccessAction.BULK_EXPORT,
+                    resource_type="user_data",
+                    resource_id=user_id,
+                    reason="gdpr_export",
+                )
+            )
 
         return result
 
@@ -559,9 +566,7 @@ class GDPRComplianceService:
 
                 # 2. Anonymize location history
                 if anonymize_historical:
-                    anonymized = await self._anonymize_user_history(
-                        db, user_id
-                    )
+                    anonymized = await self._anonymize_user_history(db, user_id)
                     result.records_anonymized = anonymized
                 else:
                     deleted = await self._delete_user_history(db, user_id)
@@ -578,13 +583,15 @@ class GDPRComplianceService:
 
         # Log the deletion
         if self.audit_logger:
-            await self.audit_logger.log(GeoAccessLog(
-                user_id=requester_id or user_id,
-                action=GeoAccessAction.BULK_EXPORT,
-                resource_type="user_data",
-                resource_id=user_id,
-                reason="gdpr_deletion",
-            ))
+            await self.audit_logger.log(
+                GeoAccessLog(
+                    user_id=requester_id or user_id,
+                    action=GeoAccessAction.BULK_EXPORT,
+                    resource_type="user_data",
+                    resource_id=user_id,
+                    reason="gdpr_deletion",
+                )
+            )
 
         return result
 
@@ -610,7 +617,6 @@ class GDPRComplianceService:
     async def _clear_user_caches(self, user_id: UUID) -> None:
         """Clear user data from all caches."""
         # Implementation would invalidate Redis keys
-        pass
 
     async def record_consent(
         self,
@@ -628,7 +634,7 @@ class GDPRComplianceService:
             granted: Whether consent was granted
             ip_address: IP address for audit
         """
-        async with self.db_session_factory() as db:
+        async with self.db_session_factory():
             # Record consent
             # (Implementation depends on consent tracking model)
             pass

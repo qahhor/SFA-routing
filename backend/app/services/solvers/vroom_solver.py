@@ -6,32 +6,32 @@ Features:
 - Structured error handling
 - Configurable timeouts
 """
+
 import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, date, time, timedelta
-from decimal import Decimal
-from typing import Optional, Any
+from datetime import date, datetime, time
+from typing import Any, Optional
 
 import httpx
 
 from app.core.config import settings
+from app.models.client import Client
 from app.models.delivery_order import DeliveryOrder
 from app.models.vehicle import Vehicle
-from app.models.client import Client
 from app.services.solvers.solver_interface import (
+    Job,
+    Location,
+    Route,
     RouteSolver,
-    SolverFactory,
-    SolverType,
+    RouteStep,
     RoutingProblem,
     SolutionResult,
-    Route,
-    RouteStep,
-    Location,
-    VehicleConfig,
-    Job,
+    SolverFactory,
+    SolverType,
     TransportMode,
+    VehicleConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ class VROOMError(Exception):
 @dataclass
 class VROOMJob:
     """Job (delivery stop) for VROOM."""
+
     id: int
     location: list[float]  # [longitude, latitude]
     service: int = 300  # service time in seconds
@@ -62,6 +63,7 @@ class VROOMJob:
 @dataclass
 class VROOMVehicle:
     """Vehicle for VROOM."""
+
     id: int
     start: list[float]  # [longitude, latitude]
     end: Optional[list[float]] = None
@@ -73,6 +75,7 @@ class VROOMVehicle:
 @dataclass
 class VROOMStep:
     """Step in a VROOM solution route."""
+
     type: str  # "start", "job", "end"
     location: list[float]
     arrival: int  # timestamp
@@ -86,6 +89,7 @@ class VROOMStep:
 @dataclass
 class VROOMRoute:
     """Route in a VROOM solution."""
+
     vehicle_id: int
     steps: list[VROOMStep]
     cost: int
@@ -100,6 +104,7 @@ class VROOMRoute:
 @dataclass
 class VROOMSolution:
     """VROOM optimization solution."""
+
     code: int
     summary: dict
     routes: list[VROOMRoute]
@@ -179,25 +184,19 @@ class VROOMSolver(RouteSolver):
                 )
             except httpx.RequestError as e:
                 last_error = e
-                logger.warning(
-                    f"VROOM {operation} network error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}"
-                )
+                logger.warning(f"VROOM {operation} network error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
             except VROOMError:
                 raise
             except Exception as e:
                 last_error = e
-                logger.warning(
-                    f"VROOM {operation} error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}"
-                )
+                logger.warning(f"VROOM {operation} error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
 
             if attempt < self.MAX_RETRIES - 1:
-                delay = self.RETRY_BASE_DELAY * (2 ** attempt)
+                delay = self.RETRY_BASE_DELAY * (2**attempt)
                 logger.info(f"Retrying VROOM {operation} in {delay}s...")
                 await asyncio.sleep(delay)
 
-        raise VROOMError(
-            f"VROOM {operation} failed after {self.MAX_RETRIES} attempts: {last_error}"
-        )
+        raise VROOMError(f"VROOM {operation} failed after {self.MAX_RETRIES} attempts: {last_error}")
 
     @property
     def solver_type(self) -> SolverType:
@@ -287,10 +286,12 @@ class VROOMSolver(RouteSolver):
             }
 
             # Add time window
-            job["time_windows"] = [[
-                self._datetime_to_timestamp(order.time_window_start),
-                self._datetime_to_timestamp(order.time_window_end),
-            ]]
+            job["time_windows"] = [
+                [
+                    self._datetime_to_timestamp(order.time_window_start),
+                    self._datetime_to_timestamp(order.time_window_end),
+                ]
+            ]
 
             vroom_jobs.append(job)
 
@@ -305,13 +306,13 @@ class VROOMSolver(RouteSolver):
         # Check if called with RoutingProblem (new interface)
         if isinstance(problem, RoutingProblem):
             return await self._solve_problem(problem)
-        
+
         # Legacy call support
         return await self._solve_legacy(problem, *args, **kwargs)
 
     async def _solve_problem(self, problem: RoutingProblem) -> SolutionResult:
         """Solve using RoutingProblem definition."""
-        
+
         # Determine profile
         profile = "car"  # Default VROOM profile
         if problem.transport_mode == TransportMode.PEDESTRIAN:
@@ -322,7 +323,7 @@ class VROOMSolver(RouteSolver):
         # Prepare request
         vehicles_data = self._prepare_vehicles_from_config(problem.vehicles, profile)
         jobs_data = self._prepare_jobs_from_routing_jobs(problem.jobs)
-        
+
         request_data = {
             "vehicles": vehicles_data,
             "jobs": jobs_data,
@@ -333,7 +334,7 @@ class VROOMSolver(RouteSolver):
 
         # Call VROOM
         result = await self.solve_raw(request_data)
-        
+
         # Parse result into SolutionResult (adapter logic)
         return self._parse_vroom_to_solution_result(result, problem)
 
@@ -370,58 +371,57 @@ class VROOMSolver(RouteSolver):
             },
         }
 
-        logger.info(
-            f"Solving VRP with VROOM: {len(orders)} orders, {len(vehicles)} vehicles"
-        )
+        logger.info(f"Solving VRP with VROOM: {len(orders)} orders, {len(vehicles)} vehicles")
 
         data = await self._request_with_retry(request_data, "solve")
 
         logger.info(
-            f"VROOM solution: {len(data.get('routes', []))} routes, "
-            f"{len(data.get('unassigned', []))} unassigned"
+            f"VROOM solution: {len(data.get('routes', []))} routes, " f"{len(data.get('unassigned', []))} unassigned"
         )
 
         return self._parse_solution(data, orders, vehicles)
 
-    def _prepare_vehicles_from_config(
-        self, 
-        vehicles: list[VehicleConfig],
-        profile: str
-    ) -> list[dict]:
+    def _prepare_vehicles_from_config(self, vehicles: list[VehicleConfig], profile: str) -> list[dict]:
         vroom_vehicles = []
         for idx, v_conf in enumerate(vehicles):
             v = {
                 "id": idx,
                 "profile": profile,
-                "start": [v_conf.start_location.longitude, v_conf.start_location.latitude] if v_conf.start_location else [0, 0],
+                "start": (
+                    [v_conf.start_location.longitude, v_conf.start_location.latitude]
+                    if v_conf.start_location
+                    else [0, 0]
+                ),
                 "capacity": [int(v_conf.capacity_kg)],
                 "description": v_conf.name,
-                 # Time window (seconds from midnight)
+                # Time window (seconds from midnight)
                 "time_window": [
                     v_conf.work_start.hour * 3600 + v_conf.work_start.minute * 60,
                     v_conf.work_end.hour * 3600 + v_conf.work_end.minute * 60,
-                ]
+                ],
             }
             if v_conf.end_location:
                 v["end"] = [v_conf.end_location.longitude, v_conf.end_location.latitude]
-            
+
             # Map breaks
             if v_conf.breaks:
                 v["breaks"] = []
                 for b in v_conf.breaks:
-                     v_break = {
-                         "id": b.id,
-                         "description": b.description,
-                         "service": b.duration_minutes * 60,
-                     }
-                     if b.start and b.end:
-                         # Provide time window for break: assumes break happens within this window
-                         # For fixed lunch break 13:00-14:00, window is [13:00, 14:00] and service matches duration
-                         v_break["time_windows"] = [[
-                             b.start.hour * 3600 + b.start.minute * 60,
-                             b.end.hour * 3600 + b.end.minute * 60,
-                         ]]
-                     v["breaks"].append(v_break)
+                    v_break = {
+                        "id": b.id,
+                        "description": b.description,
+                        "service": b.duration_minutes * 60,
+                    }
+                    if b.start and b.end:
+                        # Provide time window for break: assumes break happens within this window
+                        # For fixed lunch break 13:00-14:00, window is [13:00, 14:00] and service matches duration
+                        v_break["time_windows"] = [
+                            [
+                                b.start.hour * 3600 + b.start.minute * 60,
+                                b.end.hour * 3600 + b.end.minute * 60,
+                            ]
+                        ]
+                    v["breaks"].append(v_break)
 
             vroom_vehicles.append(v)
         return vroom_vehicles
@@ -438,16 +438,13 @@ class VROOMSolver(RouteSolver):
                 "description": str(job.id),
             }
             if job.time_window_start and job.time_window_end:
-                 # Timestamps? VROOM usually expects [start_sec, end_sec] relative to 0 if no date provided
-                 # Or unix timestamps. Let's use relative for now if dates match, or just unix.
-                 # Given RoutingProblem usually has dates, let's stick to Unix timestamp consistency if VROOM expects it.
-                 # Actually VROOM is agnostic, but consistency matters.
-                 # _time_to_timestamp uses Unix.
-                 # Let's use Unix timestamps for jobs.
-                 j["time_windows"] = [[
-                     int(job.time_window_start.timestamp()),
-                     int(job.time_window_end.timestamp())
-                 ]]
+                # Timestamps? VROOM usually expects [start_sec, end_sec] relative to 0 if no date provided
+                # Or unix timestamps. Let's use relative for now if dates match, or just unix.
+                # Given RoutingProblem usually has dates, let's stick to Unix timestamp consistency if VROOM expects it.
+                # Actually VROOM is agnostic, but consistency matters.
+                # _time_to_timestamp uses Unix.
+                # Let's use Unix timestamps for jobs.
+                j["time_windows"] = [[int(job.time_window_start.timestamp()), int(job.time_window_end.timestamp())]]
             vroom_jobs.append(j)
         return vroom_jobs
 
@@ -455,52 +452,51 @@ class VROOMSolver(RouteSolver):
         """Parse raw VROOM response to SolutionResult."""
         routes = []
         unassigned_ids = []
-        
+
         # Parse unassigned
         for u in data.get("unassigned", []):
             job_idx = u["id"]
             if job_idx < len(problem.jobs):
                 unassigned_ids.append(problem.jobs[job_idx].id)
-        
+
         # Parse routes
         total_dist = 0
         total_dur = 0
-        
+
         for r in data.get("routes", []):
             v_idx = r["vehicle"]
             if v_idx >= len(problem.vehicles):
                 continue
-            
+
             vehicle = problem.vehicles[v_idx]
             steps = []
-            
+
             for s in r.get("steps", []):
                 s_type = s["type"]
                 loc_coords = s.get("location", [0, 0])
                 location = Location(
-                    id=uuid.uuid4(), # Dummy
-                    name=s_type,
-                    latitude=loc_coords[1],
-                    longitude=loc_coords[0]
+                    id=uuid.uuid4(), name=s_type, latitude=loc_coords[1], longitude=loc_coords[0]  # Dummy
                 )
-                
+
                 job_id = None
                 if s_type == "job":
                     job_idx = s["job"]
                     if job_idx < len(problem.jobs):
                         job_id = problem.jobs[job_idx].id
                         location = problem.jobs[job_idx].location
-                
-                steps.append(RouteStep(
-                    job_id=job_id,
-                    location=location,
-                    arrival_time=datetime.fromtimestamp(s.get("arrival", 0)),
-                    departure_time=datetime.fromtimestamp(s.get("arrival", 0) + s.get("service", 0)),
-                    distance_from_previous_m=s.get("distance", 0),
-                    duration_from_previous_s=s.get("duration", 0),
-                    step_type=s_type
-                ))
-            
+
+                steps.append(
+                    RouteStep(
+                        job_id=job_id,
+                        location=location,
+                        arrival_time=datetime.fromtimestamp(s.get("arrival", 0)),
+                        departure_time=datetime.fromtimestamp(s.get("arrival", 0) + s.get("service", 0)),
+                        distance_from_previous_m=s.get("distance", 0),
+                        duration_from_previous_s=s.get("duration", 0),
+                        step_type=s_type,
+                    )
+                )
+
             route_dist = r.get("distance", 0)
             route_dur = r.get("duration", 0)
             total_dist += route_dist
@@ -510,22 +506,24 @@ class VROOMSolver(RouteSolver):
             delivery = r.get("delivery", [])
             total_load = sum(delivery) if delivery else 0
 
-            routes.append(Route(
-                vehicle_id=vehicle.id,
-                vehicle_name=vehicle.name,
-                steps=steps,
-                total_distance_m=route_dist,
-                total_duration_s=route_dur,
-                total_load=total_load,
-                geometry=r.get("geometry")
-            ))
-            
+            routes.append(
+                Route(
+                    vehicle_id=vehicle.id,
+                    vehicle_name=vehicle.name,
+                    steps=steps,
+                    total_distance_m=route_dist,
+                    total_duration_s=route_dur,
+                    total_load=total_load,
+                    geometry=r.get("geometry"),
+                )
+            )
+
         return SolutionResult(
             routes=routes,
             unassigned_jobs=unassigned_ids,
             total_distance_m=total_dist,
             total_duration_s=total_dur,
-            solver_used=SolverType.VROOM
+            solver_used=SolverType.VROOM,
         )
 
     def _parse_solution(
@@ -613,11 +611,13 @@ class VROOMSolver(RouteSolver):
         for i, loc in enumerate(locations):
             if i == start_index:
                 continue
-            jobs.append({
-                "id": job_id,
-                "location": [float(loc.longitude), float(loc.latitude)],
-                "service": 0,  # No service time for pure TSP
-            })
+            jobs.append(
+                {
+                    "id": job_id,
+                    "location": [float(loc.longitude), float(loc.latitude)],
+                    "service": 0,  # No service time for pure TSP
+                }
+            )
             index_mapping[job_id] = i
             job_id += 1
 
@@ -626,7 +626,7 @@ class VROOMSolver(RouteSolver):
             "jobs": jobs,
             "options": {
                 "g": True,  # Return geometry
-            }
+            },
         }
 
         try:

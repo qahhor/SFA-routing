@@ -7,22 +7,32 @@ Features:
 - Push notifications to agents/dispatchers
 - Live order status updates
 """
+
 import logging
 import uuid
-from typing import Optional
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query, status, Body
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import decode_token, get_current_user, get_dispatcher_user
-from app.models.user import User
+from app.core.security import decode_token, get_dispatcher_user
 from app.models.agent import Agent
-from app.services import ws_manager as manager, rerouting_service
+from app.models.user import User
+from app.services import rerouting_service
+from app.services import ws_manager as manager
 from app.services.planning.rerouting import RerouteResult
 
 logger = logging.getLogger(__name__)
@@ -34,8 +44,10 @@ router = APIRouter(tags=["Realtime"])
 # Schemas
 # ============================================================
 
+
 class GPSUpdate(BaseModel):
     """GPS update from agent/driver."""
+
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     speed: Optional[float] = Field(None, ge=0, description="Speed in km/h")
@@ -46,6 +58,7 @@ class GPSUpdate(BaseModel):
 
 class RerouteRequestSchema(BaseModel):
     """Request to re-optimize a route."""
+
     agent_id: Optional[UUID] = None
     route_id: Optional[UUID] = None
     current_latitude: Optional[float] = Field(None, ge=-90, le=90)
@@ -55,6 +68,7 @@ class RerouteRequestSchema(BaseModel):
 
 class AddStopRequest(BaseModel):
     """Request to add urgent stop to route."""
+
     route_id: UUID
     order_id: UUID
     insert_position: str = Field("optimal", pattern="^(optimal|next|last)$")
@@ -62,6 +76,7 @@ class AddStopRequest(BaseModel):
 
 class RerouteResponse(BaseModel):
     """Response from re-routing operation."""
+
     success: bool
     message: str
     stops_reordered: int = 0
@@ -73,6 +88,7 @@ class RerouteResponse(BaseModel):
 # ============================================================
 # WebSocket Authentication
 # ============================================================
+
 
 async def get_current_user_ws(
     websocket: WebSocket,
@@ -89,9 +105,7 @@ async def get_current_user_ws(
         if not user_id:
             return None
 
-        result = await db.execute(
-            select(User).where(User.id == uuid.UUID(user_id))
-        )
+        result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
         user = result.scalar_one_or_none()
 
         if not user or not user.is_active:
@@ -106,6 +120,7 @@ async def get_current_user_ws(
 # ============================================================
 # WebSocket Endpoint
 # ============================================================
+
 
 @router.websocket("/ws")
 async def websocket_endpoint(
@@ -166,11 +181,13 @@ async def websocket_endpoint(
             elif msg_type == "request_reroute":
                 if user.is_dispatcher or user.is_admin:
                     result = await handle_reroute_request(data, db)
-                    await websocket.send_json({
-                        "type": "reroute_result",
-                        "success": result.success,
-                        "message": result.message,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "reroute_result",
+                            "success": result.success,
+                            "message": result.message,
+                        }
+                    )
 
             else:
                 logger.debug(f"Unknown message type: {msg_type}")
@@ -200,6 +217,7 @@ def _can_subscribe(user: User, topic: str) -> bool:
 # ============================================================
 # GPS Update Handler
 # ============================================================
+
 
 async def handle_gps_update(data: dict, user: User, db: AsyncSession):
     """
@@ -232,11 +250,7 @@ async def handle_gps_update(data: dict, user: User, db: AsyncSession):
         await db.execute(
             update(Agent)
             .where(Agent.id == user.agent_id)
-            .values(
-                current_latitude=lat,
-                current_longitude=lon,
-                last_gps_update=ts
-            )
+            .values(current_latitude=lat, current_longitude=lon, last_gps_update=ts)
         )
         await db.commit()
     except Exception as e:
@@ -255,7 +269,7 @@ async def handle_gps_update(data: dict, user: User, db: AsyncSession):
             "accuracy": data.get("accuracy"),
             "timestamp": ts.isoformat(),
         },
-        topic="dispatchers"
+        topic="dispatchers",
     )
 
     # Auto-reroute check
@@ -302,6 +316,7 @@ async def handle_reroute_request(data: dict, db: AsyncSession) -> RerouteResult:
 # ============================================================
 # REST Endpoints for Re-routing
 # ============================================================
+
 
 @router.post("/reroute/agent/{agent_id}", response_model=RerouteResponse)
 async def reroute_agent(

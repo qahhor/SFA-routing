@@ -7,14 +7,14 @@ peak usage times.
 
 Schedule: Daily at 05:00 local time (before work day starts)
 """
+
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,6 @@ class CacheWarmer:
         the full distance matrix.
         """
         from app.models.agent import Agent
-        from app.models.client import Client
 
         warmed = 0
         skipped = 0
@@ -104,11 +103,7 @@ class CacheWarmer:
 
         async with self.db_session_factory() as db:
             # Get active agents
-            result = await db.execute(
-                select(Agent)
-                .where(Agent.is_active == True)
-                .options(selectinload(Agent.clients))
-            )
+            result = await db.execute(select(Agent).where(Agent.is_active.is_(True)).options(selectinload(Agent.clients)))
             agents = result.scalars().all()
 
             for agent in agents:
@@ -121,16 +116,16 @@ class CacheWarmer:
                         continue
 
                     # Build coordinate list
-                    coords = [
-                        (float(c.longitude), float(c.latitude))
-                        for c in clients
-                    ]
+                    coords = [(float(c.longitude), float(c.latitude)) for c in clients]
 
                     # Add agent start location
-                    coords.insert(0, (
-                        float(agent.start_longitude),
-                        float(agent.start_latitude),
-                    ))
+                    coords.insert(
+                        0,
+                        (
+                            float(agent.start_longitude),
+                            float(agent.start_latitude),
+                        ),
+                    )
 
                     # This will auto-cache via OSRM client
                     await self.osrm.get_table(coords)
@@ -245,9 +240,7 @@ class CacheWarmer:
 
         async with self.db_session_factory() as db:
             # Get active agents
-            result = await db.execute(
-                select(Agent).where(Agent.is_active == True)
-            )
+            result = await db.execute(select(Agent).where(Agent.is_active.is_(True)))
             agents = result.scalars().all()
 
             for agent in agents:
@@ -338,10 +331,9 @@ class CacheWarmer:
                         continue
 
                     # Build coordinate list for OSRM route
-                    coords = []
+                    # Note: Would need to join with orders/clients for coordinates
+                    # Simplified: skip geometry for now
                     for stop in sorted(route.stops, key=lambda s: s.sequence_number):
-                        # Would need to join with orders/clients for coordinates
-                        # Simplified: skip geometry for now
                         pass
 
                     warmed += 1
@@ -380,10 +372,12 @@ class CacheWarmer:
         patterns = [f"client:{client_id}"]
 
         if agent_id:
-            patterns.extend([
-                f"matrix:*{agent_id}*",
-                f"daily_plan:{agent_id}:*",
-            ])
+            patterns.extend(
+                [
+                    f"matrix:*{agent_id}*",
+                    f"daily_plan:{agent_id}:*",
+                ]
+            )
 
         deleted = 0
         for pattern in patterns:
@@ -400,8 +394,9 @@ def create_warming_task(celery_app):
     def warm_caches():
         """Warm all caches (runs at 05:00 daily)."""
         import asyncio
-        from app.core.database import async_session_factory
+
         from app.core.cache import cache_service
+        from app.core.database import async_session_factory
         from app.services.routing.osrm_client import osrm_client
 
         async def run():

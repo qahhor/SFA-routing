@@ -12,10 +12,11 @@ H3 Resolutions:
 
 Reference: https://h3geo.org/
 """
+
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from math import cos, radians
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 # H3 library import with fallback
 try:
     import h3
+
     H3_AVAILABLE = True
 except ImportError:
     H3_AVAILABLE = False
@@ -32,6 +34,7 @@ except ImportError:
 @dataclass
 class SpatialEntity:
     """Entity with spatial coordinates."""
+
     id: UUID
     latitude: float
     longitude: float
@@ -41,6 +44,7 @@ class SpatialEntity:
 @dataclass
 class SpatialQueryResult:
     """Result of spatial query."""
+
     entities: list[SpatialEntity]
     h3_cells_searched: int
     query_time_ms: float
@@ -90,19 +94,12 @@ class H3SpatialIndex:
         Returns:
             H3 cell index
         """
-        cell = h3.geo_to_h3(
-            entity.latitude,
-            entity.longitude,
-            self.resolution
-        )
+        cell = h3.geo_to_h3(entity.latitude, entity.longitude, self.resolution)
 
         # Remove from old cell if exists
         if entity.id in self._entity_cells:
             old_cell = self._entity_cells[entity.id]
-            self._index[old_cell] = [
-                e for e in self._index[old_cell]
-                if e.id != entity.id
-            ]
+            self._index[old_cell] = [e for e in self._index[old_cell] if e.id != entity.id]
 
         # Add to new cell
         self._index[cell].append(entity)
@@ -121,10 +118,7 @@ class H3SpatialIndex:
             return False
 
         cell = self._entity_cells[entity_id]
-        self._index[cell] = [
-            e for e in self._index[cell]
-            if e.id != entity_id
-        ]
+        self._index[cell] = [e for e in self._index[cell] if e.id != entity_id]
 
         del self._entity_cells[entity_id]
         return True
@@ -155,6 +149,7 @@ class H3SpatialIndex:
             SpatialQueryResult with nearby entities
         """
         import time
+
         start = time.time()
 
         center_cell = h3.geo_to_h3(lat, lon, self.resolution)
@@ -194,6 +189,7 @@ class H3SpatialIndex:
             SpatialQueryResult with entities within radius
         """
         import time
+
         start = time.time()
 
         # Estimate k-ring size needed for radius
@@ -207,10 +203,7 @@ class H3SpatialIndex:
         # Filter by exact distance
         filtered = []
         for entity in result.entities:
-            distance = self._haversine(
-                lat, lon,
-                entity.latitude, entity.longitude
-            )
+            distance = self._haversine(lat, lon, entity.latitude, entity.longitude)
             if distance <= radius_meters:
                 filtered.append(entity)
 
@@ -248,10 +241,7 @@ class H3SpatialIndex:
             result = self.query_point(lat, lon, k)
 
             for entity in result.entities:
-                distance = self._haversine(
-                    lat, lon,
-                    entity.latitude, entity.longitude
-                )
+                distance = self._haversine(lat, lon, entity.latitude, entity.longitude)
                 candidates.append((entity, distance))
 
             if len(candidates) >= n:
@@ -317,11 +307,13 @@ class H3SpatialIndex:
 
     def _haversine(
         self,
-        lat1: float, lon1: float,
-        lat2: float, lon2: float,
+        lat1: float,
+        lon1: float,
+        lat2: float,
+        lon2: float,
     ) -> float:
         """Calculate distance between two points in meters."""
-        from math import radians, sin, cos, sqrt, atan2
+        from math import atan2, cos, radians, sin, sqrt
 
         R = 6371000  # Earth radius in meters
 
@@ -329,8 +321,8 @@ class H3SpatialIndex:
         dlat = lat2 - lat1
         dlon = lon2 - lon1
 
-        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-        c = 2 * atan2(sqrt(a), sqrt(1-a))
+        a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+        c = 2 * atan2(sqrt(a), sqrt(1 - a))
 
         return R * c
 
@@ -453,10 +445,7 @@ class FallbackSpatialIndex:
 
         if entity.id in self._entity_cells:
             old_cell = self._entity_cells[entity.id]
-            self._index[old_cell] = [
-                e for e in self._index[old_cell]
-                if e.id != entity.id
-            ]
+            self._index[old_cell] = [e for e in self._index[old_cell] if e.id != entity.id]
 
         self._index[cell].append(entity)
         self._entity_cells[entity.id] = cell
@@ -483,20 +472,17 @@ class FallbackSpatialIndex:
                 candidates.extend(self._index.get(cell, []))
 
         # Filter by exact distance
-        from math import radians, sin, cos, sqrt, atan2
+        from math import atan2, cos, radians, sin, sqrt
 
         R = 6371000
         filtered = []
 
         for entity in candidates:
-            lat1, lon1, lat2, lon2 = map(
-                radians,
-                [lat, lon, entity.latitude, entity.longitude]
-            )
+            lat1, lon1, lat2, lon2 = map(radians, [lat, lon, entity.latitude, entity.longitude])
             dlat = lat2 - lat1
             dlon = lon2 - lon1
-            a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-            distance = R * 2 * atan2(sqrt(a), sqrt(1-a))
+            a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+            distance = R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
             if distance <= radius_meters:
                 filtered.append(entity)

@@ -1,12 +1,12 @@
 """
 Planning API routes for SFA weekly planning.
 """
+
 from datetime import date, datetime, timedelta
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
-from sqlalchemy import select, and_
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,16 +14,16 @@ from app.core.database import get_db
 from app.core.security import get_current_user, get_dispatcher_user
 from app.models.agent import Agent
 from app.models.client import Client
-from app.models.visit_plan import VisitPlan, VisitStatus
 from app.models.user import User
+from app.models.visit_plan import VisitPlan, VisitStatus
 from app.schemas.planning import (
-    WeeklyPlanRequest,
-    WeeklyPlanResponse,
     DailyPlanResponse,
     PlannedVisitResponse,
+    VisitPlanListResponse,
     VisitPlanResponse,
     VisitPlanUpdate,
-    VisitPlanListResponse,
+    WeeklyPlanRequest,
+    WeeklyPlanResponse,
 )
 from app.services import weekly_planner
 
@@ -56,27 +56,19 @@ async def generate_weekly_plan(
     - Time windows and visit durations
     """
     # Get agent
-    agent_result = await db.execute(
-        select(Agent).where(Agent.id == request.agent_id)
-    )
+    agent_result = await db.execute(select(Agent).where(Agent.id == request.agent_id))
     agent = agent_result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     # Get agent's clients
     clients_result = await db.execute(
-        select(Client).where(
-            (Client.agent_id == request.agent_id) &
-            (Client.is_active == True)
-        )
+        select(Client).where((Client.agent_id == request.agent_id) & (Client.is_active.is_(True)))
     )
     clients = list(clients_result.scalars().all())
 
     if not clients:
-        raise HTTPException(
-            status_code=400,
-            detail="Agent has no assigned clients"
-        )
+        raise HTTPException(status_code=400, detail="Agent has no assigned clients")
 
     # Ensure week_start is a Monday
     week_start = get_monday(request.week_start_date)
@@ -99,29 +91,33 @@ async def generate_weekly_plan(
         visits = []
         for visit in daily_plan.visits:
             client = client_map.get(visit.client_id)
-            visits.append(PlannedVisitResponse(
-                client_id=visit.client_id,
-                client_name=visit.client_name,
-                client_address=client.address if client else None,
-                sequence_number=visit.sequence_number,
-                planned_time=visit.planned_time,
-                estimated_arrival=visit.estimated_arrival,
-                estimated_departure=visit.estimated_departure,
-                distance_from_previous_km=visit.distance_from_previous_km,
-                duration_from_previous_minutes=visit.duration_from_previous_minutes,
-                latitude=visit.latitude,
-                longitude=visit.longitude,
-            ))
+            visits.append(
+                PlannedVisitResponse(
+                    client_id=visit.client_id,
+                    client_name=visit.client_name,
+                    client_address=client.address if client else None,
+                    sequence_number=visit.sequence_number,
+                    planned_time=visit.planned_time,
+                    estimated_arrival=visit.estimated_arrival,
+                    estimated_departure=visit.estimated_departure,
+                    distance_from_previous_km=visit.distance_from_previous_km,
+                    duration_from_previous_minutes=visit.duration_from_previous_minutes,
+                    latitude=visit.latitude,
+                    longitude=visit.longitude,
+                )
+            )
 
-        daily_plans.append(DailyPlanResponse(
-            date=daily_plan.date,
-            day_of_week=get_day_name(daily_plan.date),
-            visits=visits,
-            total_visits=len(visits),
-            total_distance_km=daily_plan.total_distance_km,
-            total_duration_minutes=daily_plan.total_duration_minutes,
-            geometry=daily_plan.geometry,
-        ))
+        daily_plans.append(
+            DailyPlanResponse(
+                date=daily_plan.date,
+                day_of_week=get_day_name(daily_plan.date),
+                visits=visits,
+                total_visits=len(visits),
+                total_distance_km=daily_plan.total_distance_km,
+                total_duration_minutes=daily_plan.total_duration_minutes,
+                geometry=daily_plan.geometry,
+            )
+        )
 
     # Save visit plans to database
     for daily_plan in plan.daily_plans:
@@ -164,9 +160,7 @@ async def get_weekly_plan(
 ) -> WeeklyPlanResponse:
     """Get existing weekly plan for an agent."""
     # Get agent
-    agent_result = await db.execute(
-        select(Agent).where(Agent.id == agent_id)
-    )
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = agent_result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -180,19 +174,16 @@ async def get_weekly_plan(
         select(VisitPlan)
         .options(selectinload(VisitPlan.client))
         .where(
-            (VisitPlan.agent_id == agent_id) &
-            (VisitPlan.planned_date >= week_start) &
-            (VisitPlan.planned_date <= week_end)
+            (VisitPlan.agent_id == agent_id)
+            & (VisitPlan.planned_date >= week_start)
+            & (VisitPlan.planned_date <= week_end)
         )
         .order_by(VisitPlan.planned_date, VisitPlan.sequence_number)
     )
     visit_plans = list(result.scalars().all())
 
     if not visit_plans:
-        raise HTTPException(
-            status_code=404,
-            detail="No plan found for this week"
-        )
+        raise HTTPException(status_code=404, detail="No plan found for this week")
 
     # Group by date
     plans_by_date: dict[date, list[VisitPlan]] = {}
@@ -216,31 +207,35 @@ async def get_weekly_plan(
         day_duration = 0
 
         for vp in day_visits:
-            visits.append(PlannedVisitResponse(
-                client_id=vp.client_id,
-                client_name=vp.client.name,
-                client_address=vp.client.address,
-                sequence_number=vp.sequence_number,
-                planned_time=vp.planned_time,
-                estimated_arrival=vp.estimated_arrival_time or vp.planned_time,
-                estimated_departure=vp.estimated_departure_time or vp.planned_time,
-                distance_from_previous_km=vp.distance_from_previous_km or 0,
-                duration_from_previous_minutes=vp.duration_from_previous_minutes or 0,
-                latitude=float(vp.client.latitude),
-                longitude=float(vp.client.longitude),
-            ))
+            visits.append(
+                PlannedVisitResponse(
+                    client_id=vp.client_id,
+                    client_name=vp.client.name,
+                    client_address=vp.client.address,
+                    sequence_number=vp.sequence_number,
+                    planned_time=vp.planned_time,
+                    estimated_arrival=vp.estimated_arrival_time or vp.planned_time,
+                    estimated_departure=vp.estimated_departure_time or vp.planned_time,
+                    distance_from_previous_km=vp.distance_from_previous_km or 0,
+                    duration_from_previous_minutes=vp.duration_from_previous_minutes or 0,
+                    latitude=float(vp.client.latitude),
+                    longitude=float(vp.client.longitude),
+                )
+            )
             day_distance += vp.distance_from_previous_km or 0
             day_duration += vp.duration_from_previous_minutes or 0
 
-        daily_plans.append(DailyPlanResponse(
-            date=plan_date,
-            day_of_week=get_day_name(plan_date),
-            visits=visits,
-            total_visits=len(visits),
-            total_distance_km=day_distance,
-            total_duration_minutes=day_duration,
-            geometry=None,
-        ))
+        daily_plans.append(
+            DailyPlanResponse(
+                date=plan_date,
+                day_of_week=get_day_name(plan_date),
+                visits=visits,
+                total_visits=len(visits),
+                total_distance_km=day_distance,
+                total_duration_minutes=day_duration,
+                geometry=None,
+            )
+        )
 
         total_visits += len(visits)
         total_distance += day_distance
@@ -270,35 +265,34 @@ async def get_daily_visits(
     result = await db.execute(
         select(VisitPlan)
         .options(selectinload(VisitPlan.client))
-        .where(
-            (VisitPlan.agent_id == agent_id) &
-            (VisitPlan.planned_date == plan_date)
-        )
+        .where((VisitPlan.agent_id == agent_id) & (VisitPlan.planned_date == plan_date))
         .order_by(VisitPlan.sequence_number)
     )
     visit_plans = list(result.scalars().all())
 
     items = []
     for vp in visit_plans:
-        items.append(VisitPlanResponse(
-            id=vp.id,
-            agent_id=vp.agent_id,
-            client_id=vp.client_id,
-            client_name=vp.client.name,
-            client_address=vp.client.address,
-            planned_date=vp.planned_date,
-            planned_time=vp.planned_time,
-            sequence_number=vp.sequence_number,
-            status=vp.status,
-            distance_from_previous_km=vp.distance_from_previous_km,
-            duration_from_previous_minutes=vp.duration_from_previous_minutes,
-            actual_arrival_time=vp.actual_arrival_time,
-            actual_departure_time=vp.actual_departure_time,
-            notes=vp.notes,
-            skip_reason=vp.skip_reason,
-            created_at=vp.created_at,
-            updated_at=vp.updated_at,
-        ))
+        items.append(
+            VisitPlanResponse(
+                id=vp.id,
+                agent_id=vp.agent_id,
+                client_id=vp.client_id,
+                client_name=vp.client.name,
+                client_address=vp.client.address,
+                planned_date=vp.planned_date,
+                planned_time=vp.planned_time,
+                sequence_number=vp.sequence_number,
+                status=vp.status,
+                distance_from_previous_km=vp.distance_from_previous_km,
+                duration_from_previous_minutes=vp.duration_from_previous_minutes,
+                actual_arrival_time=vp.actual_arrival_time,
+                actual_departure_time=vp.actual_departure_time,
+                notes=vp.notes,
+                skip_reason=vp.skip_reason,
+                created_at=vp.created_at,
+                updated_at=vp.updated_at,
+            )
+        )
 
     return VisitPlanListResponse(
         items=items,
@@ -315,11 +309,7 @@ async def update_visit(
     db: AsyncSession = Depends(get_db),
 ) -> VisitPlanResponse:
     """Update a visit plan (status, actual times, notes)."""
-    result = await db.execute(
-        select(VisitPlan)
-        .options(selectinload(VisitPlan.client))
-        .where(VisitPlan.id == visit_id)
-    )
+    result = await db.execute(select(VisitPlan).options(selectinload(VisitPlan.client)).where(VisitPlan.id == visit_id))
     visit_plan = result.scalar_one_or_none()
 
     if not visit_plan:

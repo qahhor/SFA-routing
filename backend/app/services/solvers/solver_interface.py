@@ -12,17 +12,18 @@ FMCG-specific extensions:
 - Debt collection routing
 - Central Asia regional constraints
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, time, date
-from decimal import Decimal
+from datetime import date, datetime, time
 from enum import Enum
-from typing import Optional, Any
+from typing import Optional
 from uuid import UUID
 
 
 class SolverType(str, Enum):
     """Available solver types."""
+
     VROOM = "vroom"
     ORTOOLS = "ortools"
     GREEDY = "greedy"
@@ -31,6 +32,7 @@ class SolverType(str, Enum):
 
 class ClientCategory(str, Enum):
     """Client category for visit frequency."""
+
     A = "A"  # 2-3 visits/week
     B = "B"  # 1 visit/week
     C = "C"  # 1-2 visits/month
@@ -38,6 +40,7 @@ class ClientCategory(str, Enum):
 
 class VisitPurpose(str, Enum):
     """Purpose of the visit."""
+
     REGULAR = "regular"
     PROMO = "promo"
     AUDIT = "audit"
@@ -48,6 +51,7 @@ class VisitPurpose(str, Enum):
 
 class RegionalConfig(str, Enum):
     """Regional configuration presets."""
+
     UZBEKISTAN = "uzbekistan"
     KAZAKHSTAN = "kazakhstan"
     DEFAULT = "default"
@@ -55,6 +59,7 @@ class RegionalConfig(str, Enum):
 
 class TransportMode(str, Enum):
     """Transport mode for routing."""
+
     CAR = "car"
     PEDESTRIAN = "foot"
     BICYCLE = "bicycle"
@@ -63,11 +68,12 @@ class TransportMode(str, Enum):
 @dataclass
 class Break:
     """Scheduled break for a vehicle/driver."""
+
     id: int
     start: Optional[time] = None
     end: Optional[time] = None
     description: str = ""
-    duration_minutes: int = 60 # Default duration if start/end not fixed
+    duration_minutes: int = 60  # Default duration if start/end not fixed
 
 
 @dataclass
@@ -129,6 +135,7 @@ class RegionalConstraints:
 @dataclass
 class Location:
     """Location with coordinates and metadata."""
+
     id: UUID
     name: str
     latitude: float
@@ -147,6 +154,7 @@ class Location:
 @dataclass
 class VehicleConfig:
     """Vehicle configuration for routing."""
+
     id: UUID
     name: str
     capacity_kg: float
@@ -175,6 +183,7 @@ class VehicleConfig:
 @dataclass
 class Job:
     """Job/delivery to be assigned to a vehicle."""
+
     id: UUID
     location: Location
     demand_kg: float = 0
@@ -239,6 +248,7 @@ class Job:
 @dataclass
 class RouteStep:
     """Single step in a route."""
+
     job_id: Optional[UUID]
     location: Location
     arrival_time: datetime
@@ -252,6 +262,7 @@ class RouteStep:
 @dataclass
 class Route:
     """Optimized route for a vehicle."""
+
     vehicle_id: UUID
     vehicle_name: str
     steps: list[RouteStep]
@@ -264,6 +275,7 @@ class Route:
 @dataclass
 class SolutionResult:
     """Result of route optimization."""
+
     routes: list[Route]
     unassigned_jobs: list[UUID]
     total_distance_m: int = 0
@@ -283,10 +295,7 @@ class SolutionResult:
         if not self.routes:
             return {}
 
-        visits_per_route = [
-            len([s for s in r.steps if s.step_type == "job"])
-            for r in self.routes
-        ]
+        visits_per_route = [len([s for s in r.steps if s.step_type == "job"]) for r in self.routes]
 
         total_visits = sum(visits_per_route)
         avg_visits = total_visits / len(self.routes) if self.routes else 0
@@ -294,6 +303,7 @@ class SolutionResult:
         # Workload balance (coefficient of variation)
         if avg_visits > 0 and len(visits_per_route) > 1:
             import statistics
+
             std_dev = statistics.stdev(visits_per_route)
             cv = std_dev / avg_visits
             self.workload_balance_score = max(0, 1 - cv)
@@ -319,13 +329,18 @@ class SolutionResult:
             "km_per_visit": (self.total_distance_m / 1000 / total_visits) if total_visits > 0 else 0,
             "vehicles_used": len(self.routes),
             "unassigned_count": len(self.unassigned_jobs),
-            "assignment_rate": total_visits / (total_visits + len(self.unassigned_jobs)) if (total_visits + len(self.unassigned_jobs)) > 0 else 0,
+            "assignment_rate": (
+                total_visits / (total_visits + len(self.unassigned_jobs))
+                if (total_visits + len(self.unassigned_jobs)) > 0
+                else 0
+            ),
         }
 
 
 @dataclass
 class RoutingProblem:
     """Complete routing problem definition."""
+
     jobs: list[Job]
     vehicles: list[VehicleConfig]
     depot_location: Optional[Location] = None
@@ -399,7 +414,6 @@ class RouteSolver(ABC):
     @abstractmethod
     def solver_type(self) -> SolverType:
         """Return the solver type identifier."""
-        pass
 
     @abstractmethod
     async def solve(self, problem: RoutingProblem) -> SolutionResult:
@@ -412,7 +426,6 @@ class RouteSolver(ABC):
         Returns:
             SolutionResult with optimized routes
         """
-        pass
 
     @abstractmethod
     async def solve_tsp(
@@ -432,12 +445,10 @@ class RouteSolver(ABC):
         Returns:
             List of location indices in optimal order
         """
-        pass
 
     @abstractmethod
     async def health_check(self) -> bool:
         """Check if solver is available and working."""
-        pass
 
     def estimate_quality(self, result: SolutionResult) -> float:
         """
@@ -448,10 +459,9 @@ class RouteSolver(ABC):
         if not result.routes and not result.unassigned_jobs:
             return 0.0
 
-        total_jobs = sum(
-            len([s for s in r.steps if s.step_type == "job"])
-            for r in result.routes
-        ) + len(result.unassigned_jobs)
+        total_jobs = sum(len([s for s in r.steps if s.step_type == "job"]) for r in result.routes) + len(
+            result.unassigned_jobs
+        )
 
         if total_jobs == 0:
             return 1.0
@@ -475,9 +485,11 @@ class SolverFactory:
     @classmethod
     def register(cls, solver_type: SolverType):
         """Decorator to register a solver class."""
+
         def decorator(solver_class: type[RouteSolver]):
             cls._solvers[solver_type] = solver_class
             return solver_class
+
         return decorator
 
     @classmethod
@@ -520,9 +532,7 @@ class SolverFactory:
         """Select optimal solver based on problem characteristics."""
 
         # Complex constraints → OR-Tools
-        if (problem.has_pickup_delivery or
-            problem.has_multi_depot or
-            len(problem.jobs) > 500):
+        if problem.has_pickup_delivery or problem.has_multi_depot or len(problem.jobs) > 500:
             if SolverType.ORTOOLS in cls._solvers:
                 return cls._solvers[SolverType.ORTOOLS]()
 
@@ -562,6 +572,7 @@ class SolverFactory:
             Best available solution
         """
         import time
+
         start = time.perf_counter()
 
         # Build fallback chain

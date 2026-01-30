@@ -1,13 +1,14 @@
 """
 Client model with geolocation.
 """
+
 import enum
 import uuid
-from datetime import time, date
+from datetime import date, time
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import String, Time, Numeric, Integer, Enum, ForeignKey, Boolean, Date
+from sqlalchemy import Boolean, Date, Enum, ForeignKey, Integer, Numeric, String, Time
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,8 +17,8 @@ from app.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.models.agent import Agent
-    from app.models.visit_plan import VisitPlan
     from app.models.delivery_order import DeliveryOrder
+    from app.models.visit_plan import VisitPlan
 
 
 class ClientCategory(str, enum.Enum):
@@ -28,6 +29,7 @@ class ClientCategory(str, enum.Enum):
     B: 1 visit per week (regular)
     C: 1 visit per 2 weeks (small accounts)
     """
+
     A = "A"
     B = "B"
     C = "C"
@@ -115,7 +117,7 @@ class Client(Base, UUIDMixin, TimestampMixin):
     # FMCG Analytical Fields (Synced from ERP/ML)
     outstanding_debt: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), default=0)
     stock_days_remaining: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    churn_risk_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(3, 2), default=0) # 0.00 to 1.00
+    churn_risk_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(3, 2), default=0)  # 0.00 to 1.00
     last_order_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     is_new_client: Mapped[bool] = mapped_column(Boolean, default=False)
     has_active_promo: Mapped[bool] = mapped_column(Boolean, default=False)

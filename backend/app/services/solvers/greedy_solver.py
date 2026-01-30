@@ -11,22 +11,23 @@ Algorithm:
 
 Reference: Croes, G.A. (1958). A method for solving traveling-salesman problems.
 """
-import math
+
 import logging
+import math
 from datetime import datetime, timedelta
 from typing import Optional
 
 from app.services.solvers.solver_interface import (
+    Job,
+    Location,
+    Route,
     RouteSolver,
-    SolverFactory,
-    SolverType,
+    RouteStep,
     RoutingProblem,
     SolutionResult,
-    Route,
-    RouteStep,
-    Location,
+    SolverFactory,
+    SolverType,
     VehicleConfig,
-    Job,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,11 +93,7 @@ class GreedySolver(RouteSolver):
                 assigned_jobs.update(route_assigned)
 
         # Find unassigned
-        unassigned = [
-            problem.jobs[i].id
-            for i in range(len(problem.jobs))
-            if i not in assigned_jobs
-        ]
+        unassigned = [problem.jobs[i].id for i in range(len(problem.jobs)) if i not in assigned_jobs]
 
         return SolutionResult(
             routes=routes,
@@ -144,13 +141,15 @@ class GreedySolver(RouteSolver):
         )
 
         # Add start step
-        steps.append(RouteStep(
-            job_id=None,
-            location=current_location,
-            arrival_time=now,
-            departure_time=now,
-            step_type="start",
-        ))
+        steps.append(
+            RouteStep(
+                job_id=None,
+                location=current_location,
+                arrival_time=now,
+                departure_time=now,
+                step_type="start",
+            )
+        )
 
         # Greedily assign nearest unvisited job
         while True:
@@ -177,16 +176,18 @@ class GreedySolver(RouteSolver):
             arrival = now + timedelta(seconds=travel_time)
             departure = arrival + timedelta(minutes=job.location.service_time_minutes)
 
-            steps.append(RouteStep(
-                job_id=job.id,
-                location=job.location,
-                arrival_time=arrival,
-                departure_time=departure,
-                distance_from_previous_m=int(distance),
-                duration_from_previous_s=travel_time,
-                load_after=current_load,
-                step_type="job",
-            ))
+            steps.append(
+                RouteStep(
+                    job_id=job.id,
+                    location=job.location,
+                    arrival_time=arrival,
+                    departure_time=departure,
+                    distance_from_previous_m=int(distance),
+                    duration_from_previous_s=travel_time,
+                    load_after=current_load,
+                    step_type="job",
+                )
+            )
 
             current_location = job.location
             now = departure
@@ -196,14 +197,16 @@ class GreedySolver(RouteSolver):
             return_distance = self._calculate_distance(current_location, depot)
             total_distance += int(return_distance)
 
-            steps.append(RouteStep(
-                job_id=None,
-                location=depot,
-                arrival_time=now + timedelta(seconds=int(return_distance / 8.33)),
-                departure_time=now + timedelta(seconds=int(return_distance / 8.33)),
-                distance_from_previous_m=int(return_distance),
-                step_type="end",
-            ))
+            steps.append(
+                RouteStep(
+                    job_id=None,
+                    location=depot,
+                    arrival_time=now + timedelta(seconds=int(return_distance / 8.33)),
+                    departure_time=now + timedelta(seconds=int(return_distance / 8.33)),
+                    distance_from_previous_m=int(return_distance),
+                    step_type="end",
+                )
+            )
 
         route = Route(
             vehicle_id=vehicle.id,
@@ -226,7 +229,7 @@ class GreedySolver(RouteSolver):
     ) -> Optional[int]:
         """Find nearest unassigned job that fits in vehicle."""
         nearest_idx = None
-        nearest_distance = float('inf')
+        nearest_distance = float("inf")
 
         for idx, job in enumerate(jobs):
             if idx in assigned_indices:
@@ -251,7 +254,7 @@ class GreedySolver(RouteSolver):
         dlat = lat2 - lat1
         dlon = lon2 - lon1
 
-        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+        a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
         c = 2 * math.asin(math.sqrt(a))
         r = 6371000  # Earth radius in meters
 
@@ -280,7 +283,7 @@ class GreedySolver(RouteSolver):
 
         for _ in range(len(locations) - 1):
             nearest = None
-            nearest_dist = float('inf')
+            nearest_dist = float("inf")
 
             for i, loc in enumerate(locations):
                 if visited[i]:
@@ -345,9 +348,7 @@ class GreedySolver(RouteSolver):
                         continue
 
                     # Calculate improvement
-                    delta = self._calculate_2opt_delta(
-                        locations, best_route, i, j
-                    )
+                    delta = self._calculate_2opt_delta(locations, best_route, i, j)
 
                     if delta < -self.MIN_IMPROVEMENT_THRESHOLD * best_distance:
                         # Apply the swap
@@ -390,15 +391,13 @@ class GreedySolver(RouteSolver):
         d = route[j + 1] if j + 1 < len(route) else route[0]
 
         # Current distance
-        current = (
-            self._calculate_distance(locations[a], locations[b]) +
-            self._calculate_distance(locations[c], locations[d])
+        current = self._calculate_distance(locations[a], locations[b]) + self._calculate_distance(
+            locations[c], locations[d]
         )
 
         # New distance after swap
-        new = (
-            self._calculate_distance(locations[a], locations[c]) +
-            self._calculate_distance(locations[b], locations[d])
+        new = self._calculate_distance(locations[a], locations[c]) + self._calculate_distance(
+            locations[b], locations[d]
         )
 
         return new - current
@@ -415,9 +414,9 @@ class GreedySolver(RouteSolver):
         Example: route = [0, 1, 2, 3, 4, 5], i=1, j=4
         Result:  [0, 1, 4, 3, 2, 5]  (segment [2,3,4] reversed)
         """
-        new_route = route[:i + 1]  # Keep start up to i
-        new_route.extend(reversed(route[i + 1:j + 1]))  # Reverse middle
-        new_route.extend(route[j + 1:])  # Keep end
+        new_route = route[: i + 1]  # Keep start up to i
+        new_route.extend(reversed(route[i + 1 : j + 1]))  # Reverse middle
+        new_route.extend(route[j + 1 :])  # Keep end
         return new_route
 
     def _calculate_route_distance(
@@ -428,8 +427,5 @@ class GreedySolver(RouteSolver):
         """Calculate total distance of a route."""
         total = 0.0
         for i in range(len(route) - 1):
-            total += self._calculate_distance(
-                locations[route[i]],
-                locations[route[i + 1]]
-            )
+            total += self._calculate_distance(locations[route[i]], locations[route[i + 1]])
         return total

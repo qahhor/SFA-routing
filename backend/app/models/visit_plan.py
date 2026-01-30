@@ -1,14 +1,22 @@
 """
 Visit plan model for scheduled visits.
 """
+
 import enum
 import uuid
-from datetime import date, time, datetime
+from datetime import date, datetime, time
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import (
-    String, Date, Time, Integer, Enum, ForeignKey,
-    Boolean, DateTime, Text, UniqueConstraint
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Time,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -23,6 +31,7 @@ if TYPE_CHECKING:
 
 class VisitStatus(str, enum.Enum):
     """Visit status enumeration."""
+
     PLANNED = "planned"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -125,12 +134,7 @@ class VisitPlan(Base, UUIDMixin, TimestampMixin):
     )
 
     # Constraints
-    __table_args__ = (
-        UniqueConstraint(
-            "agent_id", "client_id", "planned_date",
-            name="uq_agent_client_date"
-        ),
-    )
+    __table_args__ = (UniqueConstraint("agent_id", "client_id", "planned_date", name="uq_agent_client_date"),)
 
     def __repr__(self) -> str:
         return f"<VisitPlan {self.agent_id} -> {self.client_id} on {self.planned_date}>"

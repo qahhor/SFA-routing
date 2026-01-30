@@ -1,8 +1,8 @@
 """
 Planning schemas for SFA weekly planning.
 """
-from datetime import date, time, datetime
-from decimal import Decimal
+
+from datetime import date, datetime, time
 from typing import Optional
 from uuid import UUID
 
@@ -13,6 +13,7 @@ from app.models.visit_plan import VisitStatus
 
 class WeeklyPlanRequest(BaseModel):
     """Request for generating weekly plan."""
+
     agent_id: UUID = Field(..., description="Agent ID")
     week_start_date: date = Field(..., description="Monday of the planning week")
     week_number: int = Field(default=1, ge=1, le=2, description="Week number in cycle")
@@ -20,6 +21,7 @@ class WeeklyPlanRequest(BaseModel):
 
 class PlannedVisitResponse(BaseModel):
     """Planned visit in a daily plan."""
+
     client_id: UUID
     client_name: str
     client_address: Optional[str] = None
@@ -35,6 +37,7 @@ class PlannedVisitResponse(BaseModel):
 
 class DailyPlanResponse(BaseModel):
     """Daily plan response."""
+
     date: date
     day_of_week: str
     visits: list[PlannedVisitResponse]
@@ -46,6 +49,7 @@ class DailyPlanResponse(BaseModel):
 
 class WeeklyPlanResponse(BaseModel):
     """Weekly plan response."""
+
     agent_id: UUID
     agent_name: str
     week_start: date
@@ -59,6 +63,7 @@ class WeeklyPlanResponse(BaseModel):
 
 class VisitPlanResponse(BaseModel):
     """Visit plan response."""
+
     id: UUID
     agent_id: UUID
     client_id: UUID
@@ -83,6 +88,7 @@ class VisitPlanResponse(BaseModel):
 
 class VisitPlanUpdate(BaseModel):
     """Schema for updating a visit plan."""
+
     planned_date: Optional[date] = None
     planned_time: Optional[time] = None
     status: Optional[VisitStatus] = None
@@ -94,6 +100,7 @@ class VisitPlanUpdate(BaseModel):
 
 class VisitPlanListResponse(BaseModel):
     """Visit plan list response."""
+
     items: list[VisitPlanResponse]
     total: int
     date: date

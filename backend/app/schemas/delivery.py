@@ -1,6 +1,7 @@
 """
 Delivery optimization schemas.
 """
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
@@ -14,6 +15,7 @@ from app.models.delivery_route import RouteStatus
 
 class DeliveryOrderCreate(BaseModel):
     """Schema for creating a delivery order."""
+
     external_id: str
     client_id: UUID
     weight_kg: Decimal = Field(..., gt=0)
@@ -29,6 +31,7 @@ class DeliveryOrderCreate(BaseModel):
 
 class DeliveryOrderResponse(BaseModel):
     """Delivery order response."""
+
     id: UUID
     external_id: str
     client_id: UUID
@@ -55,6 +58,7 @@ class DeliveryOrderResponse(BaseModel):
 
 class DeliveryOptimizeRequest(BaseModel):
     """Request for delivery route optimization."""
+
     order_ids: list[UUID] = Field(..., min_length=1)
     vehicle_ids: list[UUID] = Field(..., min_length=1)
     route_date: date
@@ -62,6 +66,7 @@ class DeliveryOptimizeRequest(BaseModel):
 
 class DeliveryRouteStopResponse(BaseModel):
     """Stop in a delivery route."""
+
     id: UUID
     order_id: UUID
     order_external_id: Optional[str] = None
@@ -85,6 +90,7 @@ class DeliveryRouteStopResponse(BaseModel):
 
 class DeliveryRouteResponse(BaseModel):
     """Delivery route response."""
+
     id: UUID
     vehicle_id: UUID
     vehicle_name: str
@@ -111,6 +117,7 @@ class DeliveryRouteResponse(BaseModel):
 
 class DeliveryOptimizeResponse(BaseModel):
     """Response for delivery optimization."""
+
     routes: list[DeliveryRouteResponse]
     unassigned_orders: list[UUID]
     total_distance_km: float
@@ -122,6 +129,7 @@ class DeliveryOptimizeResponse(BaseModel):
 
 class DeliveryRouteListResponse(BaseModel):
     """Delivery route list response."""
+
     items: list[DeliveryRouteResponse]
     total: int
     date: date

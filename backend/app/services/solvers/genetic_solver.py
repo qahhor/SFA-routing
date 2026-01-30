@@ -10,24 +10,23 @@ Best for:
 
 Reference: Holland, J.H. (1975). Adaptation in Natural and Artificial Systems.
 """
-import asyncio
+
 import logging
 import random
 from dataclasses import dataclass, field
 from typing import Optional
-from uuid import UUID
 
 import numpy as np
 
 from app.services.solvers.solver_interface import (
+    Location,
+    Route,
     RouteSolver,
-    SolverFactory,
-    SolverType,
+    RouteStep,
     RoutingProblem,
     SolutionResult,
-    Route,
-    RouteStep,
-    Location,
+    SolverFactory,
+    SolverType,
 )
 
 logger = logging.getLogger(__name__)
@@ -256,9 +255,7 @@ class GeneticSolver(RouteSolver):
 
         routes: list[list[int]] = [[] for _ in problem.vehicles]
         vehicle_loads = [0.0] * len(problem.vehicles)
-        vehicle_capacities = [
-            v.capacity_kg or float("inf") for v in problem.vehicles
-        ]
+        vehicle_capacities = [v.capacity_kg or float("inf") for v in problem.vehicles]
 
         # Assign jobs to vehicles (bin packing style)
         for job_idx in chromosome:
@@ -304,10 +301,7 @@ class GeneticSolver(RouteSolver):
         if not problem.vehicles:
             return 0
 
-        total_demand = sum(
-            problem.jobs[job_idx].demand_kg or 0
-            for job_idx in route
-        )
+        total_demand = sum(problem.jobs[job_idx].demand_kg or 0 for job_idx in route)
 
         # Assume first vehicle capacity as limit
         capacity = problem.vehicles[0].capacity_kg or float("inf")
@@ -330,9 +324,7 @@ class GeneticSolver(RouteSolver):
             # Simplified check - would need arrival time simulation for accuracy
             if job.time_window_start and job.time_window_end:
                 # Mark as potential violation if tight window
-                window_hours = (
-                    job.time_window_end - job.time_window_start
-                ).total_seconds() / 3600
+                window_hours = (job.time_window_end - job.time_window_start).total_seconds() / 3600
                 if window_hours < 1:
                     violations += 1
 
@@ -487,13 +479,10 @@ class GeneticSolver(RouteSolver):
         n = len(problem.jobs)
 
         try:
-            from app.services.routing.osrm_client import osrm_client
             from app.services.caching.parallel_matrix import ParallelMatrixComputer
+            from app.services.routing.osrm_client import osrm_client
 
-            coords = [
-                (job.location.longitude, job.location.latitude)
-                for job in problem.jobs
-            ]
+            coords = [(job.location.longitude, job.location.latitude) for job in problem.jobs]
 
             # Use parallel computation for large problems
             if n > 100:
@@ -588,10 +577,7 @@ class GeneticSolver(RouteSolver):
                         steps=steps,
                         total_distance_m=individual.total_distance,
                         total_duration_s=int(individual.total_distance / 8.33),  # ~30km/h
-                        total_load=sum(
-                            problem.jobs[i].demand_kg or 0
-                            for i in route_indices
-                        ),
+                        total_load=sum(problem.jobs[i].demand_kg or 0 for i in route_indices),
                         geometry=None,
                     )
                 )

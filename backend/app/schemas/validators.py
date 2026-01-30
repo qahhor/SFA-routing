@@ -1,11 +1,11 @@
 """
 Shared Pydantic validators for common data types.
 """
+
 from decimal import Decimal
 from typing import Annotated, Any
 
-from pydantic import AfterValidator, BeforeValidator, Field
-from pydantic.functional_validators import PlainValidator
+from pydantic import BeforeValidator, Field
 
 
 def validate_latitude(v: Any) -> Decimal:
@@ -167,26 +167,17 @@ class CoordinateBounds:
     @classmethod
     def is_in_uzbekistan(cls, lat: Decimal, lon: Decimal) -> bool:
         """Check if coordinates are within Uzbekistan bounds."""
-        return (
-            cls.UZ_LAT_MIN <= lat <= cls.UZ_LAT_MAX
-            and cls.UZ_LON_MIN <= lon <= cls.UZ_LON_MAX
-        )
+        return cls.UZ_LAT_MIN <= lat <= cls.UZ_LAT_MAX and cls.UZ_LON_MIN <= lon <= cls.UZ_LON_MAX
 
     @classmethod
     def is_in_kazakhstan(cls, lat: Decimal, lon: Decimal) -> bool:
         """Check if coordinates are within Kazakhstan bounds."""
-        return (
-            cls.KZ_LAT_MIN <= lat <= cls.KZ_LAT_MAX
-            and cls.KZ_LON_MIN <= lon <= cls.KZ_LON_MAX
-        )
+        return cls.KZ_LAT_MIN <= lat <= cls.KZ_LAT_MAX and cls.KZ_LON_MIN <= lon <= cls.KZ_LON_MAX
 
     @classmethod
     def is_in_central_asia(cls, lat: Decimal, lon: Decimal) -> bool:
         """Check if coordinates are within Central Asia bounds."""
-        return (
-            cls.CA_LAT_MIN <= lat <= cls.CA_LAT_MAX
-            and cls.CA_LON_MIN <= lon <= cls.CA_LON_MAX
-        )
+        return cls.CA_LAT_MIN <= lat <= cls.CA_LAT_MAX and cls.CA_LON_MIN <= lon <= cls.CA_LON_MAX
 
 
 def validate_central_asia_coordinates(lat: Decimal, lon: Decimal) -> tuple[Decimal, Decimal]:

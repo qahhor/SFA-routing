@@ -1,16 +1,14 @@
 """
 Delivery route models.
 """
+
 import enum
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import (
-    String, Date, Numeric, Integer, Enum, ForeignKey,
-    DateTime, Text, JSON
-)
+from sqlalchemy import JSON, Date, DateTime, Enum, ForeignKey, Integer, Numeric, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,12 +16,13 @@ from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from app.models.vehicle import Vehicle
     from app.models.delivery_order import DeliveryOrder
+    from app.models.vehicle import Vehicle
 
 
 class RouteStatus(str, enum.Enum):
     """Delivery route status."""
+
     DRAFT = "draft"
     PLANNED = "planned"
     IN_PROGRESS = "in_progress"

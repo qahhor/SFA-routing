@@ -8,25 +8,25 @@ Exposes metrics for:
 - Cache hit rates
 - External service health
 """
+
 import time
-from typing import Callable, Optional
 from functools import wraps
+from typing import Callable
 
 from prometheus_client import (
-    Counter,
-    Histogram,
-    Gauge,
-    Info,
-    generate_latest,
     CONTENT_TYPE_LATEST,
     REGISTRY,
+    Counter,
+    Gauge,
+    Histogram,
+    Info,
+    generate_latest,
 )
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
 from app.core.config import settings
-
 
 # ============================================================
 # HTTP Metrics
@@ -184,16 +184,19 @@ APP_INFO = Info(
     "app",
     "Application information",
 )
-APP_INFO.info({
-    "name": settings.APP_NAME,
-    "version": settings.APP_VERSION,
-    "environment": settings.ENVIRONMENT,
-})
+APP_INFO.info(
+    {
+        "name": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+    }
+)
 
 
 # ============================================================
 # Middleware
 # ============================================================
+
 
 class PrometheusMiddleware(BaseHTTPMiddleware):
     """
@@ -281,6 +284,7 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
 # Helper Functions
 # ============================================================
 
+
 def track_solver_execution(
     solver_type: str,
     problem_size: int,
@@ -293,6 +297,7 @@ def track_solver_execution(
             result = await solver.solve(problem)
             tracker.set_result(result)
     """
+
     class SolverTracker:
         def __init__(self):
             self.start_time = None
@@ -323,12 +328,8 @@ def track_solver_execution(
                 ).inc()
 
                 if self.result:
-                    SOLVER_QUALITY.labels(solver_type=solver_type).observe(
-                        self.result.quality_score
-                    )
-                    SOLVER_UNASSIGNED.labels(solver_type=solver_type).observe(
-                        len(self.result.unassigned_jobs)
-                    )
+                    SOLVER_QUALITY.labels(solver_type=solver_type).observe(self.result.quality_score)
+                    SOLVER_UNASSIGNED.labels(solver_type=solver_type).observe(len(self.result.unassigned_jobs))
 
         def set_result(self, result):
             self.result = result
@@ -357,6 +358,7 @@ def track_external_request(service: str, operation: str):
         async def get_distance_matrix(...):
             ...
     """
+
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -384,6 +386,7 @@ def track_external_request(service: str, operation: str):
                 ).observe(duration)
 
         return wrapper
+
     return decorator
 
 
@@ -409,6 +412,7 @@ def update_db_pool_metrics(active: int, idle: int):
 # ============================================================
 # Metrics Endpoint
 # ============================================================
+
 
 async def metrics_endpoint(request: Request) -> Response:
     """

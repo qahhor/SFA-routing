@@ -1,9 +1,10 @@
 """
 User model for authentication and authorization.
 """
+
 import enum
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Boolean, Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -12,13 +13,17 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
 
+if TYPE_CHECKING:
+    from app.models.agent import Agent
+
 
 class UserRole(str, enum.Enum):
     """User roles for RBAC."""
-    ADMIN = "admin"           # Full system access
+
+    ADMIN = "admin"  # Full system access
     DISPATCHER = "dispatcher"  # Manage routes, agents, planning
-    AGENT = "agent"           # View own routes and clients
-    DRIVER = "driver"         # View own delivery routes
+    AGENT = "agent"  # View own routes and clients
+    DRIVER = "driver"  # View own delivery routes
 
 
 class User(Base, UUIDMixin, TimestampMixin):

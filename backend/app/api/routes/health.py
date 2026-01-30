@@ -1,13 +1,14 @@
 """
 Health check endpoints.
 """
-from fastapi import APIRouter, Depends, status, Response
+
+from fastapi import APIRouter, Depends
+from redis import asyncio as redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from redis import asyncio as redis
 
-from app.core.database import get_db
 from app.core.config import settings
+from app.core.database import get_db
 from app.services import osrm_client, vroom_solver
 
 router = APIRouter(tags=["health"])
@@ -66,9 +67,7 @@ async def detailed_health_check(
     except Exception as e:
         checks["redis"] = f"unhealthy: {str(e)}"
 
-    overall = "healthy" if all(
-        v == "healthy" for v in checks.values()
-    ) else "degraded"
+    overall = "healthy" if all(v == "healthy" for v in checks.values()) else "degraded"
 
     return {
         "status": overall,

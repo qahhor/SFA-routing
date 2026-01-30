@@ -7,9 +7,10 @@ Features:
 - User context
 - Custom tags and breadcrumbs
 """
+
 import logging
-from typing import Any, Optional
 from contextvars import ContextVar
+from typing import Any, Optional
 
 from app.core.config import settings
 
@@ -18,12 +19,13 @@ logger = logging.getLogger(__name__)
 # Sentry SDK is optional - gracefully degrade if not installed
 try:
     import sentry_sdk
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
-    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-    from sentry_sdk.integrations.redis import RedisIntegration
     from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.httpx import HttpxIntegration
     from sentry_sdk.integrations.logging import LoggingIntegration
+    from sentry_sdk.integrations.redis import RedisIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
     SENTRY_AVAILABLE = True
 except ImportError:
     SENTRY_AVAILABLE = False
@@ -56,11 +58,9 @@ def init_sentry() -> bool:
             dsn=dsn,
             environment=settings.ENVIRONMENT,
             release=f"{settings.APP_NAME}@{settings.APP_VERSION}",
-
             # Performance monitoring
             traces_sample_rate=0.1 if settings.ENVIRONMENT == "production" else 1.0,
             profiles_sample_rate=0.1 if settings.ENVIRONMENT == "production" else 1.0,
-
             # Integrations
             integrations=[
                 FastApiIntegration(transaction_style="endpoint"),
@@ -73,24 +73,19 @@ def init_sentry() -> bool:
                     event_level=logging.ERROR,
                 ),
             ],
-
             # Data scrubbing
             send_default_pii=False,
             before_send=_before_send,
             before_send_transaction=_before_send_transaction,
-
             # Breadcrumbs
             max_breadcrumbs=50,
-
             # Other options
             attach_stacktrace=True,
             request_bodies="small",
             with_locals=settings.ENVIRONMENT != "production",
         )
 
-        logger.info(
-            f"Sentry initialized for {settings.ENVIRONMENT} environment"
-        )
+        logger.info(f"Sentry initialized for {settings.ENVIRONMENT} environment")
         return True
 
     except Exception as e:
@@ -285,14 +280,19 @@ def start_transaction(
         class NoOpTransaction:
             def __enter__(self):
                 return self
+
             def __exit__(self, *args):
                 pass
+
             def set_status(self, status):
                 pass
+
             def set_tag(self, key, value):
                 pass
+
             def set_data(self, key, value):
                 pass
+
         return NoOpTransaction()
 
     return sentry_sdk.start_transaction(
@@ -314,17 +314,23 @@ def start_span(
             # ... do work ...
     """
     if not SENTRY_AVAILABLE or not sentry_sdk:
+
         class NoOpSpan:
             def __enter__(self):
                 return self
+
             def __exit__(self, *args):
                 pass
+
             def set_status(self, status):
                 pass
+
             def set_tag(self, key, value):
                 pass
+
             def set_data(self, key, value):
                 pass
+
         return NoOpSpan()
 
     return sentry_sdk.start_span(

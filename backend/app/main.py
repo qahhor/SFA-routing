@@ -1,6 +1,7 @@
 """
 FastAPI application entry point.
 """
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -8,16 +9,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
-from app.core.config import settings
-from app.core.database import init_db, close_db
-from app.core.redis import redis_client
-from app.core.rate_limit import limiter, rate_limit_exceeded_handler
-from app.core.logging import setup_logging, RequestLoggingMiddleware
-from app.core.middleware.idempotency import IdempotencyMiddleware
-from app.core.sentry import init_sentry
-from app.core.metrics import PrometheusMiddleware, metrics_endpoint, update_service_health
-from app.core.exceptions import register_exception_handlers
 from app.api.routes import api_router
+from app.core.config import settings
+from app.core.database import close_db, init_db
+from app.core.exceptions import register_exception_handlers
+from app.core.logging import RequestLoggingMiddleware, setup_logging
+from app.core.metrics import (
+    PrometheusMiddleware,
+    metrics_endpoint,
+    update_service_health,
+)
+from app.core.middleware.idempotency import IdempotencyMiddleware
+from app.core.rate_limit import limiter, rate_limit_exceeded_handler
+from app.core.redis import redis_client
+from app.core.sentry import init_sentry
 
 # Setup logging
 setup_logging(

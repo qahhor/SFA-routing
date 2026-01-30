@@ -1,6 +1,7 @@
 """
 Webhook management endpoints.
 """
+
 import uuid
 from typing import List
 
@@ -31,7 +32,7 @@ class WebhookResponse(BaseModel):
     url: str
     events: List[str]
     is_active: bool
-    created_at: str # ISO format
+    created_at: str  # ISO format
 
     class Config:
         from_attributes = True
@@ -45,20 +46,20 @@ async def create_webhook(
 ):
     """Register a new webhook."""
     # Validate events? (Optional: check against allowed list)
-    
+
     new_hook = WebhookSubscription(
         name=webhook.name,
         url=webhook.url,
         secret=webhook.secret,
         events=webhook.events,
         description=webhook.description,
-        owner_id=current_user.id
+        owner_id=current_user.id,
     )
-    
+
     db.add(new_hook)
     await db.commit()
     await db.refresh(new_hook)
-    
+
     return new_hook
 
 
@@ -68,9 +69,7 @@ async def list_webhooks(
     db: AsyncSession = Depends(get_db),
 ):
     """List my webhooks."""
-    query = select(WebhookSubscription).where(
-        WebhookSubscription.owner_id == current_user.id
-    )
+    query = select(WebhookSubscription).where(WebhookSubscription.owner_id == current_user.id)
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -83,18 +82,14 @@ async def delete_webhook(
 ):
     """Delete a webhook."""
     query = select(WebhookSubscription).where(
-        WebhookSubscription.id == webhook_id,
-        WebhookSubscription.owner_id == current_user.id
+        WebhookSubscription.id == webhook_id, WebhookSubscription.owner_id == current_user.id
     )
     result = await db.execute(query)
     hook = result.scalar_one_or_none()
-    
+
     if not hook:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Webhook not found"
-        )
-        
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found")
+
     await db.delete(hook)
     await db.commit()
     return None

@@ -10,21 +10,22 @@ Unlike reactive rerouting (which waits for GPS deviation),
 predictive rerouting anticipates problems and acts before
 they impact customer service.
 """
+
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
 from app.models.visit_plan import VisitPlan
-from app.services.analytics import TrafficAwareETA, ETACalibrationService
-from app.services.planning.rerouting import rerouting_service, RerouteResult
+from app.services.analytics import ETACalibrationService, TrafficAwareETA
+from app.services.planning.rerouting import RerouteResult, rerouting_service
 from app.services.realtime.websocket_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -132,9 +133,7 @@ class PredictiveReroutingEngine:
         remaining_visits = result.scalars().all()
 
         # Get agent for work end time
-        agent_result = await db.execute(
-            select(Agent).where(Agent.id == agent_id)
-        )
+        agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
         agent = agent_result.scalar_one_or_none()
 
         if not remaining_visits:
@@ -227,13 +226,11 @@ class PredictiveReroutingEngine:
         if at_risk_visits:
             if total_delay > self.PROACTIVE_REROUTE_THRESHOLD_MINUTES:
                 recommendations.append(
-                    f"Proactive re-optimization recommended. "
-                    f"Predicted total delay: {total_delay} minutes."
+                    f"Proactive re-optimization recommended. " f"Predicted total delay: {total_delay} minutes."
                 )
             else:
                 recommendations.append(
-                    f"{len(at_risk_visits)} visits at risk of delay. "
-                    "Monitor closely and prepare contingency."
+                    f"{len(at_risk_visits)} visits at risk of delay. " "Monitor closely and prepare contingency."
                 )
 
         is_feasible = total_delay < self.DELAY_WARNING_THRESHOLD_MINUTES
@@ -263,9 +260,7 @@ class PredictiveReroutingEngine:
         Returns:
             RerouteResult if re-optimization was triggered, None otherwise
         """
-        feasibility = await self.check_schedule_feasibility(
-            db, agent_id, current_location=current_location
-        )
+        feasibility = await self.check_schedule_feasibility(db, agent_id, current_location=current_location)
 
         # Create alert if needed
         if feasibility.total_predicted_delay_minutes >= self.DELAY_WARNING_THRESHOLD_MINUTES:
@@ -300,9 +295,7 @@ class PredictiveReroutingEngine:
                 current_lat, current_lon = current_location
             else:
                 # Get agent's current GPS if available
-                agent_result = await db.execute(
-                    select(Agent).where(Agent.id == agent_id)
-                )
+                agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
                 agent = agent_result.scalar_one_or_none()
                 if agent and agent.current_latitude and agent.current_longitude:
                     current_lat = float(agent.current_latitude)
@@ -333,20 +326,13 @@ class PredictiveReroutingEngine:
         today = datetime.now().date()
 
         # Get agents with visits today
-        result = await db.execute(
-            select(Agent)
-            .where(Agent.is_active == True)
-            .options(selectinload(Agent.visit_plans))
-        )
+        result = await db.execute(select(Agent).where(Agent.is_active.is_(True)).options(selectinload(Agent.visit_plans)))
         agents = result.scalars().all()
 
         checks = []
         for agent in agents:
             # Only check agents with remaining work
-            has_remaining = any(
-                vp.planned_date == today and vp.status == "planned"
-                for vp in agent.visit_plans
-            )
+            has_remaining = any(vp.planned_date == today and vp.status == "planned" for vp in agent.visit_plans)
             if not has_remaining:
                 continue
 
@@ -412,9 +398,7 @@ class PredictiveReroutingEngine:
             check_interval_minutes = self.CHECK_INTERVAL_MINUTES
 
         self._running = True
-        logger.info(
-            f"Starting predictive monitoring, interval: {check_interval_minutes} min"
-        )
+        logger.info(f"Starting predictive monitoring, interval: {check_interval_minutes} min")
 
         while self._running:
             try:
@@ -424,16 +408,12 @@ class PredictiveReroutingEngine:
                     # Log summary
                     at_risk_count = sum(1 for c in checks if not c.is_feasible)
                     if at_risk_count > 0:
-                        logger.warning(
-                            f"Monitoring: {at_risk_count}/{len(checks)} agents at risk"
-                        )
+                        logger.warning(f"Monitoring: {at_risk_count}/{len(checks)} agents at risk")
 
                     # Trigger proactive re-routes where needed
                     for check in checks:
                         if check.total_predicted_delay_minutes >= self.PROACTIVE_REROUTE_THRESHOLD_MINUTES:
-                            await self.check_and_trigger_proactive_reroute(
-                                db, check.agent_id
-                            )
+                            await self.check_and_trigger_proactive_reroute(db, check.agent_id)
 
             except Exception as e:
                 logger.error(f"Monitoring cycle failed: {e}")
@@ -461,9 +441,7 @@ class PredictiveReroutingEngine:
 
         try:
             # Get base OSRM estimate
-            result = await osrm_client.get_route(
-                [(from_lon, from_lat), (to_lon, to_lat)]
-            )
+            result = await osrm_client.get_route([(from_lon, from_lat), (to_lon, to_lat)])
             base_seconds = result.duration_seconds
 
             # Apply traffic adjustment
@@ -486,21 +464,25 @@ class PredictiveReroutingEngine:
             logger.warning(f"Travel time estimation failed, using fallback: {e}")
             # Fallback: estimate based on straight-line distance
             import math
+
             R = 6371000  # Earth radius
             dlat = math.radians(to_lat - from_lat)
             dlon = math.radians(to_lon - from_lon)
-            a = (math.sin(dlat/2)**2 +
-                 math.cos(math.radians(from_lat)) * math.cos(math.radians(to_lat)) *
-                 math.sin(dlon/2)**2)
+            a = (
+                math.sin(dlat / 2) ** 2
+                + math.cos(math.radians(from_lat)) * math.cos(math.radians(to_lat)) * math.sin(dlon / 2) ** 2
+            )
             distance = R * 2 * math.asin(math.sqrt(a))
 
             # Assume 30 km/h average with traffic multiplier
             base_seconds = distance / 8.33  # 30 km/h = 8.33 m/s
-            return int(TrafficAwareETA.adjust_duration(
-                int(base_seconds),
-                departure_time.time(),
-                self.region,
-            ))
+            return int(
+                TrafficAwareETA.adjust_duration(
+                    int(base_seconds),
+                    departure_time.time(),
+                    self.region,
+                )
+            )
 
     async def _broadcast_alert(self, alert: PredictiveAlert):
         """Broadcast predictive alert to dispatchers."""

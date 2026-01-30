@@ -1,6 +1,7 @@
 """
 Application configuration settings.
 """
+
 from functools import lru_cache
 from typing import Optional
 
@@ -109,4 +110,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-

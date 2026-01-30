@@ -13,12 +13,11 @@ This module provides integration to sync:
 - Orders (заказы)
 - Visit reports (отчёты о визитах)
 """
-import asyncio
+
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional, Any
-from uuid import UUID
+from typing import Optional
 
 import httpx
 
@@ -28,6 +27,7 @@ from app.core.config import settings
 @dataclass
 class ERPAgent:
     """Agent data from ERP."""
+
     external_id: str
     name: str
     phone: Optional[str]
@@ -39,6 +39,7 @@ class ERPAgent:
 @dataclass
 class ERPClient:
     """Client data from ERP."""
+
     external_id: str
     name: str
     address: str
@@ -55,6 +56,7 @@ class ERPClient:
 @dataclass
 class ERPOrder:
     """Order data from ERP."""
+
     external_id: str
     client_external_id: str
     order_date: datetime
@@ -69,6 +71,7 @@ class ERPOrder:
 @dataclass
 class ERPVisitReport:
     """Visit report to send to ERP."""
+
     agent_external_id: str
     client_external_id: str
     visit_date: datetime
@@ -96,8 +99,8 @@ class SmartupERPClient:
         api_key: Optional[str] = None,
         timeout: float = 30.0,
     ):
-        self.base_url = base_url or getattr(settings, 'ERP_BASE_URL', 'https://api.smartup.uz/v1')
-        self.api_key = api_key or getattr(settings, 'ERP_API_KEY', '')
+        self.base_url = base_url or getattr(settings, "ERP_BASE_URL", "https://api.smartup.uz/v1")
+        self.api_key = api_key or getattr(settings, "ERP_API_KEY", "")
         self.timeout = httpx.Timeout(timeout, connect=10.0)
 
     def _get_headers(self) -> dict[str, str]:
@@ -392,6 +395,7 @@ smartup_client = SmartupERPClient()
 
 
 # ==================== Sync Tasks ====================
+
 
 async def sync_from_erp():
     """

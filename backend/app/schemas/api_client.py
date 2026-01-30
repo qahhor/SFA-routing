@@ -1,15 +1,17 @@
 """
 Pydantic schemas for API Client management.
 """
+
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, HttpUrl
+from pydantic import BaseModel, EmailStr, Field
 
 
 class APIClientBase(BaseModel):
     """Base schema for API Client."""
+
     name: str = Field(..., min_length=3, max_length=255, description="Client name")
     description: Optional[str] = Field(None, max_length=1000, description="Client description")
     contact_email: Optional[EmailStr] = Field(None, description="Contact email")
@@ -18,6 +20,7 @@ class APIClientBase(BaseModel):
 
 class APIClientCreate(APIClientBase):
     """Schema for creating a new API Client."""
+
     tier: str = Field("free", description="Subscription tier: free, basic, pro, enterprise")
     allowed_regions: Optional[list[str]] = Field(None, description="Allowed regions")
     ip_whitelist: Optional[list[str]] = Field(None, description="IP whitelist")
@@ -25,6 +28,7 @@ class APIClientCreate(APIClientBase):
 
 class APIClientUpdate(BaseModel):
     """Schema for updating an API Client."""
+
     name: Optional[str] = Field(None, min_length=3, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     tier: Optional[str] = None
@@ -37,6 +41,7 @@ class APIClientUpdate(BaseModel):
 
 class APIClientResponse(APIClientBase):
     """Schema for API Client response (without sensitive data)."""
+
     id: UUID
     tier: str
     api_key_prefix: str = Field(..., description="First 8 characters of API key")
@@ -56,17 +61,20 @@ class APIClientResponse(APIClientBase):
 
 class APIClientWithKey(APIClientResponse):
     """Schema for API Client with full API key (only returned on creation)."""
+
     api_key: str = Field(..., description="Full API key - save this, it won't be shown again!")
 
 
 class APIKeyRegenerate(BaseModel):
     """Response schema for API key regeneration."""
+
     api_key: str = Field(..., description="New API key - save this, it won't be shown again!")
     api_key_prefix: str
 
 
 class APIClientUsage(BaseModel):
     """Schema for API Client usage statistics."""
+
     client_id: UUID
     client_name: str
     tier: str
@@ -79,6 +87,7 @@ class APIClientUsage(BaseModel):
 
 class APIClientList(BaseModel):
     """Schema for paginated list of API Clients."""
+
     items: list[APIClientResponse]
     total: int
     page: int
