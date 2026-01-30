@@ -87,7 +87,7 @@ async def import_orders(
             
             new_order = DeliveryOrder(
                 client_id=client.id,
-                order_number=order_data.external_id,
+                external_id=order_data.external_id,
                 delivery_date=order_data.delivery_date,
                 weight_kg=order_data.weight_kg,
                 volume_m3=order_data.volume_m3,
@@ -95,7 +95,7 @@ async def import_orders(
                 priority=order_data.priority,
                 time_window_start=order_data.time_window_start,
                 time_window_end=order_data.time_window_end,
-                status=OrderStatus.NEW,
+                status=OrderStatus.PENDING,
                 items=order_data.items
             )
             db.add(new_order)
