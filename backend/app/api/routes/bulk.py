@@ -60,13 +60,8 @@ async def import_orders(
     
     # Collect all client_external_ids
     client_ext_ids = {o.client_external_id for o in orders}
-    
-    # Fetch clients map
-    # We need a way to fetch clients by external_id. 
-    # TODO: Add get_clients_by_external_ids query
-    # Using simple loop for V1 (MVP) but this is SLOW for 1000s.
-    # PROD: implement WHERE external_id IN [...]
-    
+
+    # Fetch clients in single query (efficient for bulk operations)
     from sqlalchemy import select
     query = select(Client).where(Client.external_id.in_(client_ext_ids))
     result = await db.execute(query)

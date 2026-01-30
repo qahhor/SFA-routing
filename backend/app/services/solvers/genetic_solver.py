@@ -487,8 +487,8 @@ class GeneticSolver(RouteSolver):
         n = len(problem.jobs)
 
         try:
-            from app.services.osrm_client import osrm_client
-            from app.services.parallel_matrix import ParallelMatrixComputer
+            from app.services.routing.osrm_client import osrm_client
+            from app.services.caching.parallel_matrix import ParallelMatrixComputer
 
             coords = [
                 (job.location.longitude, job.location.latitude)

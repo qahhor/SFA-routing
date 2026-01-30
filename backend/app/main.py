@@ -36,6 +36,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     logger.info("Starting application...")
+
+    # Validate production settings (fails fast with clear error messages)
+    settings.validate_production_settings()
+
     await init_db()
 
     # Initial health check of external services

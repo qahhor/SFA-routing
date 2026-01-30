@@ -457,7 +457,7 @@ class PredictiveReroutingEngine:
 
         Returns seconds.
         """
-        from app.services.osrm_client import osrm_client
+        from app.services.routing.osrm_client import osrm_client
 
         try:
             # Get base OSRM estimate
