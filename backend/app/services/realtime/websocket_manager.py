@@ -7,10 +7,13 @@ Handles:
 - Targeted notifications
 """
 
+import logging
 from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class WebSocketManager:
@@ -63,17 +66,16 @@ class WebSocketManager:
                 for connection in self.subscriptions[topic]:
                     try:
                         await connection.send_json(message)
-                    except Exception:
-                        # Clean up dead connection later/handlers will disconnect
-                        pass
+                    except Exception as e:
+                        logger.debug(f"WebSocket send failed (topic={topic}): {e}")
         else:
             # Broadcast to all
             for user_conns in self.active_connections.values():
                 for connection in user_conns:
                     try:
                         await connection.send_json(message)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"WebSocket broadcast failed: {e}")
 
     async def send_personal_message(self, message: dict, user_id: UUID):
         """Send message to specific user."""
@@ -81,8 +83,8 @@ class WebSocketManager:
             for connection in self.active_connections[user_id]:
                 try:
                     await connection.send_json(message)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"WebSocket personal message failed (user={user_id}): {e}")
 
 
 # Global instance
