@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = ""  # REQUIRED: Must be set in environment
     WEBHOOK_SECRET_KEY: str = ""  # For HMAC webhook signatures
+    GEO_ENCRYPTION_KEY: str = ""  # For encrypting geolocation data (GDPR)
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 days
     ALGORITHM: str = "HS256"
@@ -61,6 +62,10 @@ class Settings(BaseSettings):
                 raise ValueError("SECRET_KEY must be at least 32 characters")
             if not self.WEBHOOK_SECRET_KEY:
                 raise ValueError("WEBHOOK_SECRET_KEY must be set in production")
+            if not self.GEO_ENCRYPTION_KEY:
+                raise ValueError("GEO_ENCRYPTION_KEY must be set in production")
+            if len(self.GEO_ENCRYPTION_KEY) < 32:
+                raise ValueError("GEO_ENCRYPTION_KEY must be at least 32 characters")
 
     # API Rate Limiting
     RATE_LIMIT_ENABLED: bool = True

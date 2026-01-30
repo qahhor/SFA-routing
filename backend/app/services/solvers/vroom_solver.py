@@ -506,13 +506,17 @@ class VROOMSolver(RouteSolver):
             total_dist += route_dist
             total_dur += route_dur
 
+            # Parse load from delivery array (sum of all dimensions)
+            delivery = r.get("delivery", [])
+            total_load = sum(delivery) if delivery else 0
+
             routes.append(Route(
                 vehicle_id=vehicle.id,
                 vehicle_name=vehicle.name,
                 steps=steps,
                 total_distance_m=route_dist,
                 total_duration_s=route_dur,
-                total_load=0, # TODO: parse load
+                total_load=total_load,
                 geometry=r.get("geometry")
             ))
             
@@ -576,7 +580,7 @@ class VROOMSolver(RouteSolver):
     ) -> list[int]:
         """
         Solve TSP using VROOM.
-        
+
         Args:
             locations: List of locations to visit
             start_index: Index of starting location
@@ -585,10 +589,76 @@ class VROOMSolver(RouteSolver):
         Returns:
             List of location indices in optimal order
         """
-        # Create a simple RoutingProblem for TSP
-        # TODO: Implement full TSP mapping
-        # For now, return trivial order
-        return list(range(len(locations)))
+        if len(locations) <= 2:
+            return list(range(len(locations)))
+
+        # Build VROOM request for TSP
+        start_loc = locations[start_index]
+        start_coords = [float(start_loc.longitude), float(start_loc.latitude)]
+
+        # Create single vehicle starting (and optionally ending) at start location
+        vehicle = {
+            "id": 0,
+            "start": start_coords,
+            "profile": "car",
+        }
+        if return_to_start:
+            vehicle["end"] = start_coords
+
+        # Create jobs for all locations except start
+        jobs = []
+        index_mapping = {}  # VROOM job_id -> original location index
+
+        job_id = 0
+        for i, loc in enumerate(locations):
+            if i == start_index:
+                continue
+            jobs.append({
+                "id": job_id,
+                "location": [float(loc.longitude), float(loc.latitude)],
+                "service": 0,  # No service time for pure TSP
+            })
+            index_mapping[job_id] = i
+            job_id += 1
+
+        request_data = {
+            "vehicles": [vehicle],
+            "jobs": jobs,
+            "options": {
+                "g": True,  # Return geometry
+            }
+        }
+
+        try:
+            response = await self._request_with_retry(request_data, "tsp")
+
+            if response.get("code") != 0:
+                logger.warning(f"VROOM TSP failed: {response}")
+                return list(range(len(locations)))
+
+            # Extract tour order from solution
+            routes = response.get("routes", [])
+            if not routes:
+                return list(range(len(locations)))
+
+            # Build ordered list of indices
+            tour = [start_index]  # Start with starting location
+
+            for step in routes[0].get("steps", []):
+                if step.get("type") == "job":
+                    vroom_job_id = step.get("job")
+                    if vroom_job_id is not None and vroom_job_id in index_mapping:
+                        tour.append(index_mapping[vroom_job_id])
+
+            # If return_to_start and tour doesn't end at start, add it
+            if return_to_start and tour[-1] != start_index:
+                tour.append(start_index)
+
+            return tour
+
+        except Exception as e:
+            logger.error(f"TSP solve failed: {e}, falling back to trivial order")
+            return list(range(len(locations)))
 
     async def solve_raw(self, request_data: dict) -> dict:
         """
