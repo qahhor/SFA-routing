@@ -11,11 +11,7 @@ from app.models.delivery_order import DeliveryOrder, OrderStatus
 from app.models.delivery_route import DeliveryRoute, DeliveryRouteStop, RouteStatus
 from app.models.vehicle import Vehicle
 from app.models.client import Client
-from app.models.delivery_order import DeliveryOrder, OrderStatus
-from app.models.delivery_route import DeliveryRoute, DeliveryRouteStop, RouteStatus
-from app.models.vehicle import Vehicle
-from app.models.client import Client
-from app.services.solver_interface import (
+from app.services.solvers.solver_interface import (
     SolverFactory,
     SolverType,
     RoutingProblem,
@@ -25,7 +21,7 @@ from app.services.solver_interface import (
     TransportMode,
     SolutionResult,
 )
-from app.services.osrm_client import OSRMClient, osrm_client
+from app.services.routing.osrm_client import OSRMClient, osrm_client
 
 
 @dataclass
@@ -78,8 +74,6 @@ class RouteOptimizer:
     - Time windows for deliveries
     - Service times at each stop
     - Order priorities
-    """
-
     """
 
     def __init__(

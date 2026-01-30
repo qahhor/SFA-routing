@@ -19,6 +19,8 @@ from app.services.solvers.solver_interface import (
     SolutionResult,
     Route,
     RouteStep,
+    TransportMode,
+    Break,
     # FMCG-specific
     ClientCategory,
     VisitPurpose,
@@ -47,6 +49,8 @@ __all__ = [
     "SolutionResult",
     "Route",
     "RouteStep",
+    "TransportMode",
+    "Break",
     # FMCG-specific
     "ClientCategory",
     "VisitPurpose",

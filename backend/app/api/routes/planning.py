@@ -25,7 +25,7 @@ from app.schemas.planning import (
     VisitPlanUpdate,
     VisitPlanListResponse,
 )
-from app.services.weekly_planner import weekly_planner
+from app.services import weekly_planner
 
 router = APIRouter(prefix="/planning", tags=["planning"])
 

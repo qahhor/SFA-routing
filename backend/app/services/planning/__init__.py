@@ -7,7 +7,7 @@ Contains route planning services:
 - Predictive rerouting
 """
 from app.services.planning.weekly_planner import WeeklyPlanner, weekly_planner
-from app.services.planning.rerouting import ReroutingService, rerouting_service
+from app.services.planning.rerouting import ReroutingService, rerouting_service, RerouteResult
 from app.services.planning.predictive_rerouting import (
     PredictiveReroutingEngine,
     predictive_engine,
@@ -19,6 +19,7 @@ __all__ = [
     "weekly_planner",
     "ReroutingService",
     "rerouting_service",
+    "RerouteResult",
     "PredictiveReroutingEngine",
     "predictive_engine",
     "ScheduleFeasibilityCheck",

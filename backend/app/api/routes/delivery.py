@@ -27,7 +27,7 @@ from app.schemas.delivery import (
     DeliveryRouteStopResponse,
     DeliveryRouteListResponse,
 )
-from app.services.route_optimizer import route_optimizer
+from app.services import route_optimizer
 
 router = APIRouter(prefix="/delivery", tags=["delivery"])
 

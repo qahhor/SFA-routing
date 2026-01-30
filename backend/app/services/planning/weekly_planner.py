@@ -20,9 +20,9 @@ from app.core.config import settings
 from app.models.agent import Agent
 from app.models.client import Client, ClientCategory
 from app.models.visit_plan import VisitPlan, VisitStatus
-from app.services.osrm_client import OSRMClient, osrm_client
-from app.services.vroom_solver import VROOMSolver, vroom_solver
-from app.services.solver_interface import (
+from app.services.routing.osrm_client import OSRMClient, osrm_client
+from app.services.solvers.vroom_solver import VROOMSolver, vroom_solver
+from app.services.solvers.solver_interface import (
     RegionalConstraints,
     RegionalConfig,
     SolverFactory,

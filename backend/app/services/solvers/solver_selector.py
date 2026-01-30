@@ -14,7 +14,7 @@ from typing import Optional
 
 import numpy as np
 
-from app.services.solver_interface import RoutingProblem, SolverType
+from app.services.solvers.solver_interface import RoutingProblem, SolverType
 
 logger = logging.getLogger(__name__)
 

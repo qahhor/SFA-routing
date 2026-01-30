@@ -8,8 +8,7 @@ from redis import asyncio as redis
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.services.osrm_client import osrm_client
-from app.services.vroom_solver import vroom_solver
+from app.services import osrm_client, vroom_solver
 
 router = APIRouter(tags=["health"])
 

@@ -46,7 +46,7 @@ class ClusteringService:
     """
 
     def __init__(self, osrm_client=None):
-        from app.services.osrm_client import osrm_client as default_osrm
+        from app.services.routing.osrm_client import osrm_client as default_osrm
         self.osrm = osrm_client or default_osrm
 
     async def cluster_kmeans(

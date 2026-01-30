@@ -19,8 +19,7 @@ from app.models.delivery_order import DeliveryOrder, OrderStatus
 from app.models.delivery_route import DeliveryRoute, DeliveryRouteStop, RouteStatus
 from app.models.vehicle import Vehicle
 from app.models.visit_plan import VisitPlan, VisitStatus
-from app.services.weekly_planner import WeeklyPlanner
-from app.services.route_optimizer import RouteOptimizer
+from app.services import WeeklyPlanner, RouteOptimizer
 
 
 def get_async_session() -> async_sessionmaker[AsyncSession]:

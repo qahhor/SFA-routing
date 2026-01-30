@@ -19,7 +19,6 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.models.delivery_order import DeliveryOrder, OrderStatus
 from app.models.client import Client
-from app.services.solver_interface import get_user_by_id # Assuming helper or use CRUD
 
 router = APIRouter(prefix="/bulk", tags=["Bulk Import"])
 
@@ -61,13 +60,8 @@ async def import_orders(
     
     # Collect all client_external_ids
     client_ext_ids = {o.client_external_id for o in orders}
-    
-    # Fetch clients map
-    # We need a way to fetch clients by external_id. 
-    # TODO: Add get_clients_by_external_ids query
-    # Using simple loop for V1 (MVP) but this is SLOW for 1000s.
-    # PROD: implement WHERE external_id IN [...]
-    
+
+    # Fetch clients in single query (efficient for bulk operations)
     from sqlalchemy import select
     query = select(Client).where(Client.external_id.in_(client_ext_ids))
     result = await db.execute(query)
@@ -93,7 +87,7 @@ async def import_orders(
             
             new_order = DeliveryOrder(
                 client_id=client.id,
-                order_number=order_data.external_id,
+                external_id=order_data.external_id,
                 delivery_date=order_data.delivery_date,
                 weight_kg=order_data.weight_kg,
                 volume_m3=order_data.volume_m3,
@@ -101,7 +95,7 @@ async def import_orders(
                 priority=order_data.priority,
                 time_window_start=order_data.time_window_start,
                 time_window_end=order_data.time_window_end,
-                status=OrderStatus.NEW,
+                status=OrderStatus.PENDING,
                 items=order_data.items
             )
             db.add(new_order)

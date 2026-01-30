@@ -36,6 +36,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     logger.info("Starting application...")
+
+    # Validate production settings (fails fast with clear error messages)
+    settings.validate_production_settings()
+
     await init_db()
 
     # Initial health check of external services
@@ -52,8 +56,7 @@ async def lifespan(app: FastAPI):
 
 async def _check_external_services():
     """Check and report health of external services on startup."""
-    from app.services.osrm_client import osrm_client
-    from app.services.vroom_solver import vroom_solver
+    from app.services import osrm_client, vroom_solver
 
     # Check OSRM
     try:

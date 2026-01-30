@@ -24,8 +24,8 @@ from sqlalchemy.orm import selectinload
 from app.models.agent import Agent
 from app.models.visit_plan import VisitPlan
 from app.services.analytics import TrafficAwareETA, ETACalibrationService
-from app.services.rerouting import rerouting_service, RerouteResult
-from app.services.websocket_manager import manager
+from app.services.planning.rerouting import rerouting_service, RerouteResult
+from app.services.realtime.websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 
@@ -457,7 +457,7 @@ class PredictiveReroutingEngine:
 
         Returns seconds.
         """
-        from app.services.osrm_client import osrm_client
+        from app.services.routing.osrm_client import osrm_client
 
         try:
             # Get base OSRM estimate
