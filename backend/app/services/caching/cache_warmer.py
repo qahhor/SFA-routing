@@ -402,7 +402,7 @@ def create_warming_task(celery_app):
         import asyncio
         from app.core.database import async_session_factory
         from app.core.cache import cache_service
-        from app.services.osrm_client import osrm_client
+        from app.services.routing.osrm_client import osrm_client
 
         async def run():
             warmer = CacheWarmer(

@@ -20,7 +20,7 @@ from app.core.config import settings
 from app.models.delivery_order import DeliveryOrder
 from app.models.vehicle import Vehicle
 from app.models.client import Client
-from app.services.solver_interface import (
+from app.services.solvers.solver_interface import (
     RouteSolver,
     SolverFactory,
     SolverType,

@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
-from app.services.solver_interface import (
+from app.services.solvers.solver_interface import (
     RouteSolver,
     SolverFactory,
     SolverType,
@@ -31,7 +31,7 @@ from app.services.solver_interface import (
     Location,
     TransportMode,
 )
-from app.services.osrm_client import osrm_client, OSRMError
+from app.services.routing.osrm_client import osrm_client, OSRMError
 
 logger = logging.getLogger(__name__)
 

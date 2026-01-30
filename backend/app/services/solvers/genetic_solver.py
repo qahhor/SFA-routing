@@ -19,7 +19,7 @@ from uuid import UUID
 
 import numpy as np
 
-from app.services.solver_interface import (
+from app.services.solvers.solver_interface import (
     RouteSolver,
     SolverFactory,
     SolverType,

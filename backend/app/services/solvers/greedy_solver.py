@@ -16,7 +16,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from app.services.solver_interface import (
+from app.services.solvers.solver_interface import (
     RouteSolver,
     SolverFactory,
     SolverType,

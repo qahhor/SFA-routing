@@ -23,8 +23,8 @@ from app.models.client import Client
 from app.models.delivery_order import DeliveryOrder
 from app.models.delivery_route import DeliveryRoute
 from app.models.visit_plan import VisitPlan
-from app.services.osrm_client import osrm_client
-from app.services.solver_interface import (
+from app.services.routing.osrm_client import osrm_client
+from app.services.solvers.solver_interface import (
     SolverFactory,
     SolverType,
     RoutingProblem,
@@ -32,7 +32,7 @@ from app.services.solver_interface import (
     Job,
     VehicleConfig,
 )
-from app.services.websocket_manager import manager
+from app.services.realtime.websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 

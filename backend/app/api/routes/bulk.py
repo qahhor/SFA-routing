@@ -19,7 +19,6 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.models.delivery_order import DeliveryOrder, OrderStatus
 from app.models.client import Client
-from app.services.solver_interface import get_user_by_id # Assuming helper or use CRUD
 
 router = APIRouter(prefix="/bulk", tags=["Bulk Import"])
 

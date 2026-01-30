@@ -22,8 +22,8 @@ from app.core.database import get_db
 from app.core.security import decode_token, get_current_user, get_dispatcher_user
 from app.models.user import User
 from app.models.agent import Agent
-from app.services.websocket_manager import manager
-from app.services.rerouting import rerouting_service, RerouteResult
+from app.services import ws_manager as manager, rerouting_service
+from app.services.planning.rerouting import RerouteResult
 
 logger = logging.getLogger(__name__)
 

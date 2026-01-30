@@ -15,7 +15,7 @@ from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 
 from app.models.client import Client
-from app.services.osrm_client import osrm_client, MatrixResult
+from app.services.routing.osrm_client import osrm_client, MatrixResult
 
 logger = logging.getLogger(__name__)
 
