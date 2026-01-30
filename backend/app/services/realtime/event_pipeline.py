@@ -11,13 +11,14 @@ Events flow:
 4. Action execution
 5. Notification broadcast
 """
+
 import asyncio
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Optional
 from uuid import UUID, uuid4
 
 logger = logging.getLogger(__name__)
@@ -149,7 +150,6 @@ class EventHandler(ABC):
     @abstractmethod
     async def can_handle(self, event: RoutingEvent) -> bool:
         """Check if handler can process this event."""
-        pass
 
     @abstractmethod
     async def handle(self, event: RoutingEvent) -> Optional[RoutingEvent]:
@@ -159,7 +159,6 @@ class EventHandler(ABC):
         Returns:
             Optional follow-up event to process
         """
-        pass
 
 
 class GPSDeviationHandler(EventHandler):
@@ -254,9 +253,7 @@ class TrafficHandler(EventHandler):
         if not affected_agents:
             return None
 
-        logger.info(
-            f"Traffic incident affects {len(affected_agents)} agents"
-        )
+        logger.info(f"Traffic incident affects {len(affected_agents)} agents")
 
         # Reroute affected agents
         for agent_id in affected_agents:
@@ -316,7 +313,7 @@ class OrderChangeHandler(EventHandler):
 
         if event.event_type == EventType.ORDER_CANCELLED:
             # Remove from route and optimize remaining
-            result = await self.rerouting.remove_and_reoptimize(
+            await self.rerouting.remove_and_reoptimize(
                 agent_id=event.agent_id,
                 order_id=event.order_id,
             )
@@ -324,7 +321,7 @@ class OrderChangeHandler(EventHandler):
 
         elif event.event_type == EventType.ORDER_URGENT:
             # Bump priority and reorder
-            result = await self.rerouting.prioritize_order(
+            await self.rerouting.prioritize_order(
                 agent_id=event.agent_id,
                 order_id=event.order_id,
                 priority=100,
@@ -333,7 +330,7 @@ class OrderChangeHandler(EventHandler):
 
         elif event.event_type == EventType.ORDER_ADDED:
             # Insert into optimal position
-            result = await self.rerouting.insert_order(
+            await self.rerouting.insert_order(
                 agent_id=event.agent_id,
                 order_id=event.order_id,
             )
@@ -370,9 +367,7 @@ class EventPipeline:
         max_concurrent: int = 10,
     ):
         self.handlers: list[EventHandler] = []
-        self.queue: asyncio.PriorityQueue = asyncio.PriorityQueue(
-            maxsize=max_queue_size
-        )
+        self.queue: asyncio.PriorityQueue = asyncio.PriorityQueue(maxsize=max_queue_size)
         self.max_concurrent = max_concurrent
         self._running = False
         self._workers: list[asyncio.Task] = []
@@ -451,6 +446,7 @@ class EventPipeline:
     async def _process_event(self, event: RoutingEvent) -> None:
         """Process single event through handlers."""
         import time
+
         start = time.time()
 
         try:
@@ -472,10 +468,7 @@ class EventPipeline:
 
             # Update metrics
             self.events_processed += 1
-            self.avg_processing_time_ms = (
-                self.avg_processing_time_ms * 0.9 +
-                processing_time * 0.1
-            )
+            self.avg_processing_time_ms = self.avg_processing_time_ms * 0.9 + processing_time * 0.1
 
     def get_metrics(self) -> dict:
         """Get pipeline metrics."""
@@ -510,14 +503,8 @@ def create_event_pipeline(
     pipeline = EventPipeline()
 
     # Register handlers
-    pipeline.register_handler(
-        GPSDeviationHandler(rerouting_service, websocket_manager)
-    )
-    pipeline.register_handler(
-        TrafficHandler(rerouting_service, spatial_index, websocket_manager)
-    )
-    pipeline.register_handler(
-        OrderChangeHandler(rerouting_service, websocket_manager)
-    )
+    pipeline.register_handler(GPSDeviationHandler(rerouting_service, websocket_manager))
+    pipeline.register_handler(TrafficHandler(rerouting_service, spatial_index, websocket_manager))
+    pipeline.register_handler(OrderChangeHandler(rerouting_service, websocket_manager))
 
     return pipeline

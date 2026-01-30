@@ -1,16 +1,14 @@
 """
 Delivery order model.
 """
+
 import enum
 import uuid
-from decimal import Decimal
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import (
-    String, Numeric, Integer, Enum, ForeignKey,
-    DateTime, Text
-)
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,6 +22,7 @@ if TYPE_CHECKING:
 
 class OrderStatus(str, enum.Enum):
     """Delivery order status."""
+
     PENDING = "pending"
     ASSIGNED = "assigned"
     IN_TRANSIT = "in_transit"

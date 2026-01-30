@@ -7,9 +7,10 @@ Security features:
 - Retry logic with exponential backoff
 - Delivery logging for audit trail
 """
+
 import asyncio
-import hmac
 import hashlib
+import hmac
 import json
 import logging
 import time
@@ -85,11 +86,7 @@ class WebhookService:
             Hex-encoded HMAC-SHA256 signature
         """
         message = f"{timestamp}.{payload}"
-        return hmac.new(
-            secret.encode("utf-8"),
-            message.encode("utf-8"),
-            hashlib.sha256
-        ).hexdigest()
+        return hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
 
     @staticmethod
     def verify_signature(
@@ -144,9 +141,7 @@ class WebhookService:
             List of delivery results for each subscription
         """
         # Find active subscriptions for this event
-        query = select(WebhookSubscription).where(
-            WebhookSubscription.is_active.is_(True)
-        )
+        query = select(WebhookSubscription).where(WebhookSubscription.is_active.is_(True))
         result = await db.execute(query)
         subs = result.scalars().all()
 
@@ -170,31 +165,27 @@ class WebhookService:
         payload_json = json.dumps(payload, default=str)
 
         # Dispatch to all subscriptions concurrently
-        tasks = [
-            self._deliver_to_subscription(sub, payload_json, timestamp, event_type)
-            for sub in target_subs
-        ]
+        tasks = [self._deliver_to_subscription(sub, payload_json, timestamp, event_type) for sub in target_subs]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Process results
         delivery_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                delivery_results.append(WebhookDeliveryResult(
-                    subscription_id=str(target_subs[i].id),
-                    url=target_subs[i].url,
-                    success=False,
-                    error=str(result),
-                ))
+                delivery_results.append(
+                    WebhookDeliveryResult(
+                        subscription_id=str(target_subs[i].id),
+                        url=target_subs[i].url,
+                        success=False,
+                        error=str(result),
+                    )
+                )
             else:
                 delivery_results.append(result)
 
         # Log summary
         success_count = sum(1 for r in delivery_results if r.success)
-        logger.info(
-            f"Webhook dispatch: event={event_type}, "
-            f"total={len(delivery_results)}, success={success_count}"
-        )
+        logger.info(f"Webhook dispatch: event={event_type}, " f"total={len(delivery_results)}, success={success_count}")
 
         return delivery_results
 
@@ -265,16 +256,12 @@ class WebhookService:
 
                 except httpx.TimeoutException:
                     last_error = "Timeout"
-                    logger.warning(
-                        f"Webhook timeout: url={sub.url}, "
-                        f"attempt={attempts}/{self.MAX_RETRIES}"
-                    )
+                    logger.warning(f"Webhook timeout: url={sub.url}, " f"attempt={attempts}/{self.MAX_RETRIES}")
 
                 except httpx.RequestError as e:
                     last_error = str(e)
                     logger.warning(
-                        f"Webhook request error: url={sub.url}, "
-                        f"error={e}, attempt={attempts}/{self.MAX_RETRIES}"
+                        f"Webhook request error: url={sub.url}, " f"error={e}, attempt={attempts}/{self.MAX_RETRIES}"
                     )
 
                 # Wait before retry (except on last attempt)
@@ -282,10 +269,7 @@ class WebhookService:
                     await asyncio.sleep(self.RETRY_DELAYS[attempt])
 
         duration_ms = (time.time() - start_time) * 1000
-        logger.error(
-            f"Webhook delivery failed after {attempts} attempts: "
-            f"url={sub.url}, error={last_error}"
-        )
+        logger.error(f"Webhook delivery failed after {attempts} attempts: " f"url={sub.url}, error={last_error}")
 
         return WebhookDeliveryResult(
             subscription_id=str(sub.id),

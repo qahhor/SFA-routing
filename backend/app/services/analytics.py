@@ -11,21 +11,17 @@ Implements strategic recommendations:
 - R10: Visit outcome feedback
 - R11: Customer satisfaction scoring
 """
+
 import enum
-import math
-from datetime import datetime, date, time, timedelta
-from decimal import Decimal
-from typing import Optional
 from dataclasses import dataclass, field
+from datetime import datetime, time, timedelta
+from typing import Optional
 from uuid import UUID
-
-from sqlalchemy import select, func, and_
-from sqlalchemy.ext.asyncio import AsyncSession
-
 
 # ============================================================================
 # R1: Dynamic Service Time Calculation
 # ============================================================================
+
 
 class ServiceTimeCalculator:
     """
@@ -44,10 +40,10 @@ class ServiceTimeCalculator:
 
     # Multipliers for various conditions
     MULTIPLIERS = {
-        "new_client": 1.5,        # New clients need onboarding
-        "has_promo": 1.2,         # Promo explanation takes time
-        "high_debt": 1.3,         # Debt discussion needed
-        "large_order": 1.25,      # More SKUs to process
+        "new_client": 1.5,  # New clients need onboarding
+        "has_promo": 1.2,  # Promo explanation takes time
+        "high_debt": 1.3,  # Debt discussion needed
+        "large_order": 1.25,  # More SKUs to process
         "first_visit_week": 1.1,  # First weekly visit is longer
     }
 
@@ -118,6 +114,7 @@ class ServiceTimeCalculator:
 # ============================================================================
 # R3: Skill-based Agent-Client Assignment
 # ============================================================================
+
 
 @dataclass
 class AgentSkills:
@@ -201,11 +198,11 @@ class SkillBasedAssignment:
 
         # Calculate weighted score
         score = (
-            weights["negotiation"] * negotiation_norm +
-            weights["product_knowledge"] * knowledge_norm +
-            weights["experience"] * experience_norm +
-            weights["conversion"] * agent.conversion_rate +
-            weights["satisfaction"] * agent.customer_satisfaction
+            weights["negotiation"] * negotiation_norm
+            + weights["product_knowledge"] * knowledge_norm
+            + weights["experience"] * experience_norm
+            + weights["conversion"] * agent.conversion_rate
+            + weights["satisfaction"] * agent.customer_satisfaction
         )
 
         # Bonus for specialized capabilities
@@ -240,9 +237,7 @@ class SkillBasedAssignment:
             List of (agent, score) tuples sorted by score descending
         """
         scored = [
-            (agent, cls.calculate_fit_score(
-                agent, client_category, is_new_client, has_debt, requires_language
-            ))
+            (agent, cls.calculate_fit_score(agent, client_category, is_new_client, has_debt, requires_language))
             for agent in agents
         ]
         return sorted(scored, key=lambda x: x[1], reverse=True)
@@ -251,6 +246,7 @@ class SkillBasedAssignment:
 # ============================================================================
 # R4: Predictive Visit Frequency
 # ============================================================================
+
 
 @dataclass
 class ClientVisitFeatures:
@@ -373,6 +369,7 @@ class PredictiveVisitFrequency:
 # ============================================================================
 # R5: Traffic Multipliers by Time of Day
 # ============================================================================
+
 
 @dataclass
 class TrafficProfile:
@@ -498,11 +495,7 @@ class TrafficAwareETA:
         """
         if osrm_duration_seconds < 1800:  # Less than 30 min
             # Simple case: single multiplier
-            adjusted = cls.adjust_duration(
-                osrm_duration_seconds,
-                departure.time(),
-                region
-            )
+            adjusted = cls.adjust_duration(osrm_duration_seconds, departure.time(), region)
             return departure + timedelta(seconds=adjusted)
 
         # For longer trips, segment by hour
@@ -525,6 +518,7 @@ class TrafficAwareETA:
 # ============================================================================
 # R6: ETA Calibration Service
 # ============================================================================
+
 
 @dataclass
 class ETACalibrationData:
@@ -588,9 +582,7 @@ class ETACalibrationService:
         # Update with EMA (alpha = 0.1 for smooth updates)
         alpha = 0.1
         current = cls._adjustments[region][departure_hour][day_of_week]
-        cls._adjustments[region][departure_hour][day_of_week] = (
-            alpha * error_ratio + (1 - alpha) * current
-        )
+        cls._adjustments[region][departure_hour][day_of_week] = alpha * error_ratio + (1 - alpha) * current
         cls._sample_counts[region][departure_hour][day_of_week] += 1
 
     def get_calibration_factor(
@@ -649,6 +641,7 @@ class ETACalibrationService:
 # ============================================================================
 # R8: Smart Priority Refresh
 # ============================================================================
+
 
 class SmartPriorityRefresh:
     """
@@ -740,6 +733,7 @@ class SmartPriorityRefresh:
 # ============================================================================
 # R10: Visit Outcome Feedback
 # ============================================================================
+
 
 class VisitOutcome(str, enum.Enum):
     """Possible outcomes of a client visit."""
@@ -867,6 +861,7 @@ class VisitFeedbackProcessor:
 # R11: Customer Satisfaction Scoring
 # ============================================================================
 
+
 @dataclass
 class ClientSatisfactionInputs:
     """Input data for satisfaction score calculation."""
@@ -972,10 +967,7 @@ class CustomerSatisfactionScore:
         scores["service_thoroughness"] = max(0, 1.0 - deviation)
 
         # Calculate weighted sum
-        total = sum(
-            cls.WEIGHTS[component] * scores[component]
-            for component in cls.WEIGHTS
-        )
+        total = sum(cls.WEIGHTS[component] * scores[component] for component in cls.WEIGHTS)
 
         return round(total * 100, 1)
 
@@ -1020,8 +1012,7 @@ class CustomerSatisfactionScore:
             coverage = inputs.actual_frequency / inputs.requested_frequency
             if coverage < 0.9:
                 suggestions.append(
-                    f"Increase visit frequency to match client expectations "
-                    f"(current: {coverage:.0%} of requested)."
+                    f"Increase visit frequency to match client expectations " f"(current: {coverage:.0%} of requested)."
                 )
 
         # Check conversion
@@ -1038,15 +1029,11 @@ class CustomerSatisfactionScore:
             fulfillment = inputs.orders_fulfilled / inputs.orders_placed
             if fulfillment < 0.95:
                 suggestions.append(
-                    f"Fulfillment rate ({fulfillment:.0%}) below target. "
-                    "Address supply chain or inventory issues."
+                    f"Fulfillment rate ({fulfillment:.0%}) below target. " "Address supply chain or inventory issues."
                 )
 
         # Check complaints
         if inputs.complaints_count > 0:
-            suggestions.append(
-                f"{inputs.complaints_count} complaints recorded. "
-                "Review and address root causes."
-            )
+            suggestions.append(f"{inputs.complaints_count} complaints recorded. " "Review and address root causes.")
 
         return suggestions

@@ -4,6 +4,7 @@ Distance-based clustering using OSRM real road distances.
 Replaces Euclidean-based K-means with hierarchical clustering
 based on actual travel times for more accurate territory planning.
 """
+
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
@@ -11,11 +12,11 @@ from typing import Optional
 from uuid import UUID
 
 import numpy as np
-from scipy.cluster.hierarchy import linkage, fcluster
+from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
 
 from app.models.client import Client
-from app.services.routing.osrm_client import osrm_client, MatrixResult
+from app.services.routing.osrm_client import MatrixResult, osrm_client
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ClusterResult:
     """Result of clustering operation."""
+
     clusters: dict[int, list[UUID]]  # cluster_id -> list of client IDs
     cluster_centers: dict[int, tuple[float, float]]  # cluster_id -> (lat, lon)
     total_clients: int
@@ -83,13 +85,8 @@ class DistanceBasedClusterer:
 
         if len(clients) <= n_clusters:
             # Fewer clients than clusters - each client is its own cluster
-            clusters = {
-                i: [c.id] for i, c in enumerate(clients)
-            }
-            centers = {
-                i: (float(c.latitude), float(c.longitude))
-                for i, c in enumerate(clients)
-            }
+            clusters = {i: [c.id] for i, c in enumerate(clients)}
+            centers = {i: (float(c.latitude), float(c.longitude)) for i, c in enumerate(clients)}
             return ClusterResult(
                 clusters=clusters,
                 cluster_centers=centers,
@@ -131,9 +128,7 @@ class DistanceBasedClusterer:
         # Build cluster result
         clusters = self._build_clusters(clients, labels)
         centers = self._compute_cluster_centers(clients, clusters)
-        cluster_distances = self._compute_cluster_distances(
-            clients, clusters, distance_matrix
-        )
+        cluster_distances = self._compute_cluster_distances(clients, clusters, distance_matrix)
 
         result = ClusterResult(
             clusters=clusters,
@@ -144,10 +139,7 @@ class DistanceBasedClusterer:
             cluster_distances=cluster_distances,
         )
 
-        logger.info(
-            f"Clustering complete: {len(clusters)} clusters, "
-            f"avg size {result.avg_cluster_size:.1f}"
-        )
+        logger.info(f"Clustering complete: {len(clusters)} clusters, " f"avg size {result.avg_cluster_size:.1f}")
 
         return result
 
@@ -156,10 +148,7 @@ class DistanceBasedClusterer:
         clients: list[Client],
     ) -> MatrixResult:
         """Fetch distance matrix from OSRM."""
-        coordinates = [
-            (float(c.longitude), float(c.latitude))
-            for c in clients
-        ]
+        coordinates = [(float(c.longitude), float(c.latitude)) for c in clients]
 
         # Use batched method for large sets
         if len(coordinates) > 100:
@@ -178,24 +167,20 @@ class DistanceBasedClusterer:
 
         Uses Ward's method for compact clusters.
         """
-        n = len(distance_matrix)
-
         # Convert to condensed form for scipy
         # scipy expects upper triangle in condensed form
         condensed = squareform(distance_matrix, checks=False)
 
         # Perform hierarchical clustering
         # Ward's method minimizes within-cluster variance
-        Z = linkage(condensed, method='ward')
+        Z = linkage(condensed, method="ward")
 
         # Cut dendrogram to get clusters
-        labels = fcluster(Z, n_clusters, criterion='maxclust')
+        labels = fcluster(Z, n_clusters, criterion="maxclust")
 
         # Adjust if max_cluster_size specified
         if max_cluster_size:
-            labels = self._split_large_clusters(
-                labels, distance_matrix, max_cluster_size
-            )
+            labels = self._split_large_clusters(labels, distance_matrix, max_cluster_size)
 
         return labels
 
@@ -224,8 +209,8 @@ class DistanceBasedClusterer:
 
             try:
                 condensed = squareform(sub_matrix, checks=False)
-                Z = linkage(condensed, method='ward')
-                sub_labels = fcluster(Z, n_sub, criterion='maxclust')
+                Z = linkage(condensed, method="ward")
+                sub_labels = fcluster(Z, n_sub, criterion="maxclust")
 
                 # Assign new labels
                 for i, idx in enumerate(indices):
@@ -341,8 +326,7 @@ class DistanceBasedClusterer:
             agent_loads[min_agent] += len(client_ids)
 
         logger.info(
-            f"Assigned {len(clients)} clients to {n_agents} agents, "
-            f"loads: {[len(v) for v in assignments.values()]}"
+            f"Assigned {len(clients)} clients to {n_agents} agents, " f"loads: {[len(v) for v in assignments.values()]}"
         )
 
         return assignments

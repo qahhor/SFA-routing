@@ -1,6 +1,7 @@
 """
 Client API routes.
 """
+
 from typing import Optional
 from uuid import UUID
 
@@ -11,14 +12,14 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.security import get_current_user, get_dispatcher_user
-from app.models.client import Client, ClientCategory
 from app.models.agent import Agent
+from app.models.client import Client, ClientCategory
 from app.models.user import User
 from app.schemas.client import (
     ClientCreate,
-    ClientUpdate,
-    ClientResponse,
     ClientListResponse,
+    ClientResponse,
+    ClientUpdate,
 )
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -49,9 +50,9 @@ async def list_clients(
 
     if search:
         query = query.where(
-            (Client.name.ilike(f"%{search}%")) |
-            (Client.address.ilike(f"%{search}%")) |
-            (Client.external_id.ilike(f"%{search}%"))
+            (Client.name.ilike(f"%{search}%"))
+            | (Client.address.ilike(f"%{search}%"))
+            | (Client.external_id.ilike(f"%{search}%"))
         )
 
     # Count total
@@ -66,7 +67,7 @@ async def list_clients(
     items = []
     for client in clients:
         client_dict = {
-            **{k: v for k, v in client.__dict__.items() if not k.startswith('_')},
+            **{k: v for k, v in client.__dict__.items() if not k.startswith("_")},
             "agent_name": client.agent.name if client.agent else None,
         }
         items.append(ClientResponse.model_validate(client_dict))
@@ -86,20 +87,18 @@ async def get_client(
     db: AsyncSession = Depends(get_db),
 ) -> ClientResponse:
     """Get client by ID."""
-    result = await db.execute(
-        select(Client)
-        .options(selectinload(Client.agent))
-        .where(Client.id == client_id)
-    )
+    result = await db.execute(select(Client).options(selectinload(Client.agent)).where(Client.id == client_id))
     client = result.scalar_one_or_none()
 
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    return ClientResponse.model_validate({
-        **{k: v for k, v in client.__dict__.items() if not k.startswith('_')},
-        "agent_name": client.agent.name if client.agent else None,
-    })
+    return ClientResponse.model_validate(
+        {
+            **{k: v for k, v in client.__dict__.items() if not k.startswith("_")},
+            "agent_name": client.agent.name if client.agent else None,
+        }
+    )
 
 
 @router.post("", response_model=ClientResponse, status_code=201)
@@ -110,21 +109,14 @@ async def create_client(
 ) -> ClientResponse:
     """Create a new client."""
     # Check for duplicate external_id
-    existing = await db.execute(
-        select(Client).where(Client.external_id == data.external_id)
-    )
+    existing = await db.execute(select(Client).where(Client.external_id == data.external_id))
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Client with external_id '{data.external_id}' already exists"
-        )
+        raise HTTPException(status_code=400, detail=f"Client with external_id '{data.external_id}' already exists")
 
     # Verify agent exists if specified
     agent_name = None
     if data.agent_id:
-        agent_result = await db.execute(
-            select(Agent).where(Agent.id == data.agent_id)
-        )
+        agent_result = await db.execute(select(Agent).where(Agent.id == data.agent_id))
         agent = agent_result.scalar_one_or_none()
         if not agent:
             raise HTTPException(status_code=400, detail="Agent not found")
@@ -135,10 +127,12 @@ async def create_client(
     await db.commit()
     await db.refresh(client)
 
-    return ClientResponse.model_validate({
-        **{k: v for k, v in client.__dict__.items() if not k.startswith('_')},
-        "agent_name": agent_name,
-    })
+    return ClientResponse.model_validate(
+        {
+            **{k: v for k, v in client.__dict__.items() if not k.startswith("_")},
+            "agent_name": agent_name,
+        }
+    )
 
 
 @router.put("/{client_id}", response_model=ClientResponse)
@@ -149,11 +143,7 @@ async def update_client(
     db: AsyncSession = Depends(get_db),
 ) -> ClientResponse:
     """Update a client."""
-    result = await db.execute(
-        select(Client)
-        .options(selectinload(Client.agent))
-        .where(Client.id == client_id)
-    )
+    result = await db.execute(select(Client).options(selectinload(Client.agent)).where(Client.id == client_id))
     client = result.scalar_one_or_none()
 
     if not client:
@@ -162,9 +152,7 @@ async def update_client(
     # Verify agent exists if changing
     update_data = data.model_dump(exclude_unset=True)
     if "agent_id" in update_data and update_data["agent_id"]:
-        agent_result = await db.execute(
-            select(Agent).where(Agent.id == update_data["agent_id"])
-        )
+        agent_result = await db.execute(select(Agent).where(Agent.id == update_data["agent_id"]))
         if not agent_result.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Agent not found")
 
@@ -175,17 +163,15 @@ async def update_client(
     await db.refresh(client)
 
     # Reload with agent
-    result = await db.execute(
-        select(Client)
-        .options(selectinload(Client.agent))
-        .where(Client.id == client_id)
-    )
+    result = await db.execute(select(Client).options(selectinload(Client.agent)).where(Client.id == client_id))
     client = result.scalar_one()
 
-    return ClientResponse.model_validate({
-        **{k: v for k, v in client.__dict__.items() if not k.startswith('_')},
-        "agent_name": client.agent.name if client.agent else None,
-    })
+    return ClientResponse.model_validate(
+        {
+            **{k: v for k, v in client.__dict__.items() if not k.startswith("_")},
+            "agent_name": client.agent.name if client.agent else None,
+        }
+    )
 
 
 @router.delete("/{client_id}", status_code=204)
@@ -229,7 +215,9 @@ async def assign_client_to_agent(
     await db.commit()
     await db.refresh(client)
 
-    return ClientResponse.model_validate({
-        **{k: v for k, v in client.__dict__.items() if not k.startswith('_')},
-        "agent_name": agent.name,
-    })
+    return ClientResponse.model_validate(
+        {
+            **{k: v for k, v in client.__dict__.items() if not k.startswith("_")},
+            "agent_name": agent.name,
+        }
+    )

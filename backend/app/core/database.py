@@ -8,6 +8,7 @@ Features:
 - Statement timeout for long-running queries
 - Pool monitoring endpoints
 """
+
 import logging
 from typing import AsyncGenerator
 
@@ -27,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
-    pass
 
 
 # Create engine with optimized pool settings

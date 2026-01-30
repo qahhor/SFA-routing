@@ -1,6 +1,7 @@
 """
 Vehicle API routes.
 """
+
 from typing import Optional
 from uuid import UUID
 
@@ -10,13 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user, get_dispatcher_user
-from app.models.vehicle import Vehicle
 from app.models.user import User
+from app.models.vehicle import Vehicle
 from app.schemas.vehicle import (
     VehicleCreate,
-    VehicleUpdate,
-    VehicleResponse,
     VehicleListResponse,
+    VehicleResponse,
+    VehicleUpdate,
 )
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
@@ -38,10 +39,7 @@ async def list_vehicles(
         query = query.where(Vehicle.is_active == is_active)
 
     if search:
-        query = query.where(
-            (Vehicle.name.ilike(f"%{search}%")) |
-            (Vehicle.license_plate.ilike(f"%{search}%"))
-        )
+        query = query.where((Vehicle.name.ilike(f"%{search}%")) | (Vehicle.license_plate.ilike(f"%{search}%")))
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())
@@ -86,14 +84,9 @@ async def create_vehicle(
 ) -> VehicleResponse:
     """Create a new vehicle."""
     # Check for duplicate license plate
-    existing = await db.execute(
-        select(Vehicle).where(Vehicle.license_plate == data.license_plate)
-    )
+    existing = await db.execute(select(Vehicle).where(Vehicle.license_plate == data.license_plate))
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Vehicle with license plate '{data.license_plate}' already exists"
-        )
+        raise HTTPException(status_code=400, detail=f"Vehicle with license plate '{data.license_plate}' already exists")
 
     vehicle = Vehicle(**data.model_dump())
     db.add(vehicle)
@@ -122,15 +115,11 @@ async def update_vehicle(
     # Check license plate uniqueness if changing
     if "license_plate" in update_data:
         existing = await db.execute(
-            select(Vehicle).where(
-                (Vehicle.license_plate == update_data["license_plate"]) &
-                (Vehicle.id != vehicle_id)
-            )
+            select(Vehicle).where((Vehicle.license_plate == update_data["license_plate"]) & (Vehicle.id != vehicle_id))
         )
         if existing.scalar_one_or_none():
             raise HTTPException(
-                status_code=400,
-                detail=f"Vehicle with license plate '{update_data['license_plate']}' already exists"
+                status_code=400, detail=f"Vehicle with license plate '{update_data['license_plate']}' already exists"
             )
 
     for field, value in update_data.items():

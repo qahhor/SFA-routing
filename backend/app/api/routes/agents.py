@@ -1,27 +1,28 @@
 """
 Agent (Sales Representative) API routes.
 """
+
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select, outerjoin
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, get_dispatcher_user
 from app.core.exceptions import (
     AgentNotFoundException,
     DuplicateExternalIdException,
 )
+from app.core.security import get_current_user, get_dispatcher_user
 from app.models.agent import Agent
 from app.models.client import Client
 from app.models.user import User
 from app.schemas.agent import (
     AgentCreate,
-    AgentUpdate,
-    AgentResponse,
     AgentListResponse,
+    AgentResponse,
+    AgentUpdate,
 )
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -40,10 +41,7 @@ async def list_agents(
     # Base query with client count (FIXED: N+1 query)
     # Uses single query with LEFT JOIN and GROUP BY instead of N separate queries
     query = (
-        select(
-            Agent,
-            func.count(Client.id).label("clients_count")
-        )
+        select(Agent, func.count(Client.id).label("clients_count"))
         .outerjoin(Client, Agent.id == Client.agent_id)
         .group_by(Agent.id)
     )
@@ -52,10 +50,7 @@ async def list_agents(
         query = query.where(Agent.is_active == is_active)
 
     if search:
-        query = query.where(
-            (Agent.name.ilike(f"%{search}%")) |
-            (Agent.external_id.ilike(f"%{search}%"))
-        )
+        query = query.where((Agent.name.ilike(f"%{search}%")) | (Agent.external_id.ilike(f"%{search}%")))
 
     # Count total (without client count for efficiency)
     count_subquery = select(Agent.id)
@@ -63,8 +58,7 @@ async def list_agents(
         count_subquery = count_subquery.where(Agent.is_active == is_active)
     if search:
         count_subquery = count_subquery.where(
-            (Agent.name.ilike(f"%{search}%")) |
-            (Agent.external_id.ilike(f"%{search}%"))
+            (Agent.name.ilike(f"%{search}%")) | (Agent.external_id.ilike(f"%{search}%"))
         )
     count_query = select(func.count()).select_from(count_subquery.subquery())
     total = await db.scalar(count_query)
@@ -100,10 +94,7 @@ async def get_agent(
     """Get agent by ID."""
     # Single query with client count
     query = (
-        select(
-            Agent,
-            func.count(Client.id).label("clients_count")
-        )
+        select(Agent, func.count(Client.id).label("clients_count"))
         .outerjoin(Client, Agent.id == Client.agent_id)
         .where(Agent.id == agent_id)
         .group_by(Agent.id)
@@ -115,10 +106,12 @@ async def get_agent(
         raise AgentNotFoundException(str(agent_id))
 
     agent, clients_count = row
-    return AgentResponse.model_validate({
-        **agent.__dict__,
-        "clients_count": clients_count or 0,
-    })
+    return AgentResponse.model_validate(
+        {
+            **agent.__dict__,
+            "clients_count": clients_count or 0,
+        }
+    )
 
 
 @router.post("", response_model=AgentResponse, status_code=201)
@@ -129,9 +122,7 @@ async def create_agent(
 ) -> AgentResponse:
     """Create a new agent."""
     # Check for duplicate external_id
-    existing = await db.execute(
-        select(Agent).where(Agent.external_id == data.external_id)
-    )
+    existing = await db.execute(select(Agent).where(Agent.external_id == data.external_id))
     if existing.scalar_one_or_none():
         raise DuplicateExternalIdException("Agent", data.external_id)
 
@@ -168,10 +159,12 @@ async def update_agent(
     client_count_query = select(func.count()).where(Client.agent_id == agent.id)
     clients_count = await db.scalar(client_count_query)
 
-    return AgentResponse.model_validate({
-        **agent.__dict__,
-        "clients_count": clients_count or 0,
-    })
+    return AgentResponse.model_validate(
+        {
+            **agent.__dict__,
+            "clients_count": clients_count or 0,
+        }
+    )
 
 
 @router.delete("/{agent_id}", status_code=204)

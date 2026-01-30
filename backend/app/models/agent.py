@@ -1,13 +1,12 @@
 """
 Agent (Sales Representative) model.
 """
-import uuid
+
 from datetime import time
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import String, Time, Numeric, Integer, Boolean, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -15,8 +14,8 @@ from app.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.models.client import Client
-    from app.models.visit_plan import VisitPlan
     from app.models.user import User
+    from app.models.visit_plan import VisitPlan
 
 
 class Agent(Base, UUIDMixin, TimestampMixin):

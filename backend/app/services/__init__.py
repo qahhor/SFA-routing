@@ -11,148 +11,141 @@ Provides business logic for route optimization:
 - Analytics: Service time, skill matching, ETA calibration
 """
 
-# ============================================================
-# Solvers sub-package
-# ============================================================
-from app.services.solvers import (
-    # Base classes
-    RouteSolver,
-    SolverFactory,
-    SolverType,
-    RoutingProblem,
-    Job,
-    VehicleConfig,
-    Location,
-    SolutionResult,
-    Route,
-    RouteStep,
-    TransportMode,
-    Break,
-    # FMCG-specific
-    ClientCategory,
-    VisitPurpose,
-    RegionalConfig,
-    RegionalConstraints,
-    # Selector
-    SmartSolverSelector,
-    ProblemFeatures,
-    solver_selector,
-    # Solvers
-    VROOMSolver,
-    vroom_solver,
-    ORToolsSolver,
-    GeneticSolver,
-    GAConfig,
-    GreedySolver,
-)
-
-# ============================================================
-# Routing sub-package
-# ============================================================
-from app.services.routing import (
-    OSRMClient,
-    osrm_client,
-    RouteOptimizer,
-    route_optimizer,
-    Clusterer,
-    DistanceBasedClusterer,
-    distance_clusterer,
-)
-
-# ============================================================
-# Planning sub-package
-# ============================================================
-from app.services.planning import (
-    WeeklyPlanner,
-    weekly_planner,
-    ReroutingService,
-    rerouting_service,
-    RerouteResult,
-    PredictiveReroutingEngine,
-    predictive_engine,
-    ScheduleFeasibilityCheck,
+# Analytics (many classes, import selectively)
+from app.services.analytics import (
+    AgentSkills,
+    ClientSatisfactionInputs,
+    ClientVisitFeatures,
+    CustomerSatisfactionScore,
+    ETACalibrationData,
+    ETACalibrationService,
+    PredictiveVisitFrequency,
+    ServiceTimeCalculator,
+    SkillBasedAssignment,
+    SmartPriorityRefresh,
+    TrafficAwareETA,
+    TrafficProfile,
+    VisitFeedback,
+    VisitFeedbackProcessor,
+    VisitOutcome,
 )
 
 # ============================================================
 # Caching sub-package
 # ============================================================
 from app.services.caching import (
-    CacheWarmer,
-    WarmingStrategy,
-    ParallelMatrixComputer,
-    MatrixCache,
     CachedParallelMatrixComputer,
-)
-
-# ============================================================
-# Realtime sub-package
-# ============================================================
-from app.services.realtime import (
-    # Event pipeline
-    EventPipeline,
-    EventType,
-    EventPriority,
-    BaseEvent,
-    GPSEvent,
-    TrafficEvent,
-    OrderEvent,
-    VisitEvent,
-    EventHandler,
-    GPSUpdateHandler,
-    TrafficAlertHandler,
-    OrderCancelHandler,
-    VisitCompleteHandler,
-    # WebSocket
-    WebSocketManager,
-    ws_manager,
-    # Spatial
-    SpatialEntity,
-    H3SpatialIndex,
-    FallbackSpatialIndex,
-    create_spatial_index,
-)
-
-# ============================================================
-# Security sub-package
-# ============================================================
-from app.services.security import (
-    CoordinateEncryptor,
-    AnonymizationLevel,
-    AnonymizedLocation,
-    LocationAnonymizer,
-    GeoAccessAction,
-    GeoAccessLog,
-    GeoAuditLogger,
-    GDPRExportResult,
-    GDPRDeletionResult,
-    GDPRComplianceService,
-    create_security_services,
+    CacheWarmer,
+    MatrixCache,
+    ParallelMatrixComputer,
+    WarmingStrategy,
 )
 
 # ============================================================
 # Root-level services
 # ============================================================
 from app.services.pdf_export import PDFExporter, pdf_exporter
-from app.services.webhook_service import WebhookService, webhook_service
 
-# Analytics (many classes, import selectively)
-from app.services.analytics import (
-    ServiceTimeCalculator,
-    AgentSkills,
-    SkillBasedAssignment,
-    ClientVisitFeatures,
-    PredictiveVisitFrequency,
-    TrafficProfile,
-    TrafficAwareETA,
-    ETACalibrationData,
-    ETACalibrationService,
-    SmartPriorityRefresh,
-    VisitOutcome,
-    VisitFeedback,
-    VisitFeedbackProcessor,
-    ClientSatisfactionInputs,
-    CustomerSatisfactionScore,
+# ============================================================
+# Planning sub-package
+# ============================================================
+from app.services.planning import (
+    PredictiveReroutingEngine,
+    RerouteResult,
+    ReroutingService,
+    ScheduleFeasibilityCheck,
+    WeeklyPlanner,
+    predictive_engine,
+    rerouting_service,
+    weekly_planner,
 )
+
+# ============================================================
+# Realtime sub-package
+# ============================================================
+from app.services.realtime import (  # Event pipeline; WebSocket; Spatial
+    BaseEvent,
+    EventHandler,
+    EventPipeline,
+    EventPriority,
+    EventType,
+    FallbackSpatialIndex,
+    GPSEvent,
+    GPSUpdateHandler,
+    H3SpatialIndex,
+    OrderCancelHandler,
+    OrderEvent,
+    SpatialEntity,
+    TrafficAlertHandler,
+    TrafficEvent,
+    VisitCompleteHandler,
+    VisitEvent,
+    WebSocketManager,
+    create_spatial_index,
+    ws_manager,
+)
+
+# ============================================================
+# Routing sub-package
+# ============================================================
+from app.services.routing import (
+    Clusterer,
+    DistanceBasedClusterer,
+    OSRMClient,
+    RouteOptimizer,
+    distance_clusterer,
+    osrm_client,
+    route_optimizer,
+)
+
+# ============================================================
+# Security sub-package
+# ============================================================
+from app.services.security import (
+    AnonymizationLevel,
+    AnonymizedLocation,
+    CoordinateEncryptor,
+    GDPRComplianceService,
+    GDPRDeletionResult,
+    GDPRExportResult,
+    GeoAccessAction,
+    GeoAccessLog,
+    GeoAuditLogger,
+    LocationAnonymizer,
+    create_security_services,
+)
+
+# ============================================================
+# Solvers sub-package
+# ============================================================
+from app.services.solvers import (  # Base classes; FMCG-specific; Selector; Solvers
+    Break,
+    ClientCategory,
+    GAConfig,
+    GeneticSolver,
+    GreedySolver,
+    Job,
+    Location,
+    ORToolsSolver,
+    ProblemFeatures,
+    RegionalConfig,
+    RegionalConstraints,
+    Route,
+    RouteSolver,
+    RouteStep,
+    RoutingProblem,
+    SmartSolverSelector,
+    SolutionResult,
+    SolverFactory,
+    SolverType,
+    TransportMode,
+    VehicleConfig,
+    VisitPurpose,
+    VROOMSolver,
+    solver_selector,
+    vroom_solver,
+)
+from app.services.webhook_service import WebhookService, webhook_service
 
 __all__ = [
     # ========== Solvers ==========

@@ -14,30 +14,29 @@ Features:
 
 Documentation: https://developers.google.com/optimization/routing
 """
+
 import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
-from uuid import UUID
 
+from app.services.routing.osrm_client import osrm_client
 from app.services.solvers.solver_interface import (
+    Location,
+    Route,
     RouteSolver,
-    SolverFactory,
-    SolverType,
+    RouteStep,
     RoutingProblem,
     SolutionResult,
-    Route,
-    RouteStep,
-    Location,
-    TransportMode,
+    SolverFactory,
+    SolverType,
 )
-from app.services.routing.osrm_client import osrm_client, OSRMError
 
 logger = logging.getLogger(__name__)
 
 try:
-    from ortools.constraint_solver import routing_enums_pb2
-    from ortools.constraint_solver import pywrapcp
+    from ortools.constraint_solver import pywrapcp, routing_enums_pb2
+
     ORTOOLS_AVAILABLE = True
 except ImportError:
     ORTOOLS_AVAILABLE = False
@@ -135,10 +134,7 @@ class ORToolsSolver(RouteSolver):
             Tuple of (distance_matrix, duration_matrix) in meters and seconds
         """
         # Convert locations to coordinates (lon, lat) for OSRM
-        coordinates = [
-            (float(loc.longitude), float(loc.latitude))
-            for loc in locations
-        ]
+        coordinates = [(float(loc.longitude), float(loc.latitude)) for loc in locations]
 
         # Use batched method for large sets
         if len(coordinates) > 100:
@@ -147,14 +143,8 @@ class ORToolsSolver(RouteSolver):
             result = await osrm_client.get_table(coordinates)
 
         # Convert to integer matrices (meters and seconds)
-        distance_matrix = [
-            [int(d) if d is not None else 999999 for d in row]
-            for row in result.distances
-        ]
-        duration_matrix = [
-            [int(d) if d is not None else 99999 for d in row]
-            for row in result.durations
-        ]
+        distance_matrix = [[int(d) if d is not None else 999999 for d in row] for row in result.distances]
+        duration_matrix = [[int(d) if d is not None else 99999 for d in row] for row in result.durations]
 
         return distance_matrix, duration_matrix
 
@@ -181,8 +171,7 @@ class ORToolsSolver(RouteSolver):
         if duration_matrix is None:
             # Estimate duration from distance (assuming 30 km/h average)
             duration_matrix = [
-                [int(d / 500) for d in row]  # d meters / 500 = seconds at 30 km/h
-                for row in distance_matrix
+                [int(d / 500) for d in row] for row in distance_matrix  # d meters / 500 = seconds at 30 km/h
             ]
 
         # Create routing index manager
@@ -207,15 +196,11 @@ class ORToolsSolver(RouteSolver):
 
         # Add capacity constraint
         if any(j.demand_kg > 0 for j in problem.jobs):
-            self._add_capacity_constraint(
-                routing, manager, problem, locations
-            )
+            self._add_capacity_constraint(routing, manager, problem, locations)
 
         # Add time windows if present
         if problem.has_time_windows:
-            self._add_time_windows(
-                routing, manager, problem, locations, duration_matrix
-            )
+            self._add_time_windows(routing, manager, problem, locations, duration_matrix)
 
         # Search parameters
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
@@ -252,9 +237,7 @@ class ORToolsSolver(RouteSolver):
             )
 
         # Parse solution
-        return self._parse_solution(
-            routing, manager, solution, problem, locations, distance_matrix
-        )
+        return self._parse_solution(routing, manager, solution, problem, locations, distance_matrix)
 
     def _build_location_list(self, problem: RoutingProblem) -> list[Location]:
         """Build ordered location list with depot at index 0."""
@@ -325,9 +308,7 @@ class ORToolsSolver(RouteSolver):
         demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
 
         # Add dimension for capacity
-        vehicle_capacities = [
-            int(v.capacity_kg) for v in problem.vehicles
-        ]
+        vehicle_capacities = [int(v.capacity_kg) for v in problem.vehicles]
 
         routing.AddDimensionWithVehicleCapacity(
             demand_callback_index,
@@ -382,14 +363,8 @@ class ORToolsSolver(RouteSolver):
 
             if job.time_window_start and job.time_window_end:
                 # Convert to seconds from midnight
-                start_seconds = (
-                    job.time_window_start.hour * 3600 +
-                    job.time_window_start.minute * 60
-                )
-                end_seconds = (
-                    job.time_window_end.hour * 3600 +
-                    job.time_window_end.minute * 60
-                )
+                start_seconds = job.time_window_start.hour * 3600 + job.time_window_start.minute * 60
+                end_seconds = job.time_window_end.hour * 3600 + job.time_window_end.minute * 60
                 time_dimension.CumulVar(index).SetRange(start_seconds, end_seconds)
 
     def _parse_solution(
@@ -405,7 +380,6 @@ class ORToolsSolver(RouteSolver):
 
         routes = []
         total_distance = 0
-        total_duration = 0
         assigned_jobs = set()
 
         for vehicle_id in range(len(problem.vehicles)):
@@ -456,19 +430,20 @@ class ORToolsSolver(RouteSolver):
 
             # Add end step (return to depot)
             if steps:
-                end_node = manager.IndexToNode(index)
                 prev_node = manager.IndexToNode(prev_index)
                 dist_to_depot = distance_matrix[prev_node][0]
                 route_distance += dist_to_depot
 
-                steps.append(RouteStep(
-                    job_id=None,
-                    location=locations[0],
-                    arrival_time=datetime.now(),
-                    departure_time=datetime.now(),
-                    distance_from_previous_m=dist_to_depot,
-                    step_type="end",
-                ))
+                steps.append(
+                    RouteStep(
+                        job_id=None,
+                        location=locations[0],
+                        arrival_time=datetime.now(),
+                        departure_time=datetime.now(),
+                        distance_from_previous_m=dist_to_depot,
+                        step_type="end",
+                    )
+                )
 
             # Only add route if it has jobs
             if len(steps) > 2:  # More than just start and end
@@ -478,11 +453,15 @@ class ORToolsSolver(RouteSolver):
                     steps=steps,
                     total_distance_m=route_distance,
                     total_duration_s=int(route_distance / 8.33),  # ~30 km/h
-                    total_load=sum(
-                        problem.jobs[manager.IndexToNode(manager.NodeToIndex(i)) - 1].demand_kg
-                        for i, s in enumerate(steps)
-                        if s.step_type == "job" and s.job_id
-                    ) if steps else 0,
+                    total_load=(
+                        sum(
+                            problem.jobs[manager.IndexToNode(manager.NodeToIndex(i)) - 1].demand_kg
+                            for i, s in enumerate(steps)
+                            if s.step_type == "job" and s.job_id
+                        )
+                        if steps
+                        else 0
+                    ),
                 )
                 routes.append(route)
                 total_distance += route_distance
@@ -574,9 +553,7 @@ class ORToolsSolver(RouteSolver):
 
         # Search parameters
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-        search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
-        )
+        search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
         search_parameters.time_limit.seconds = 10
 
         # Solve

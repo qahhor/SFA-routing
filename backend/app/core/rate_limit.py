@@ -3,12 +3,11 @@ Rate limiting configuration for API endpoints.
 
 Uses slowapi for request throttling based on client IP or user ID.
 """
-from typing import Optional
 
-from fastapi import Request, HTTPException
+from fastapi import Request
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
 
 from app.core.config import settings
@@ -80,6 +79,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSO
     if hasattr(exc, "detail") and exc.detail:
         # Try to extract wait time from message
         import re
+
         match = re.search(r"(\d+)\s*second", str(exc.detail))
         if match:
             retry_after = int(match.group(1))

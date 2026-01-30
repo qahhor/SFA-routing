@@ -3,6 +3,7 @@ API Client management endpoints.
 
 Admin endpoints for managing API clients (external services).
 """
+
 from typing import Optional
 from uuid import UUID
 
@@ -31,7 +32,7 @@ router = APIRouter(prefix="/api-clients", tags=["API Clients"])
     status_code=status.HTTP_201_CREATED,
     summary="Create new API Client",
     description="Create a new API client for external service access. "
-                "**Save the returned API key - it won't be shown again!**",
+    "**Save the returned API key - it won't be shown again!**",
 )
 async def create_api_client(
     client_data: APIClientCreate,
@@ -141,9 +142,7 @@ async def get_api_client(
     db: AsyncSession = Depends(get_db),
 ):
     """Get API client by ID."""
-    result = await db.execute(
-        select(APIClient).where(APIClient.id == client_id)
-    )
+    result = await db.execute(select(APIClient).where(APIClient.id == client_id))
     client = result.scalar_one_or_none()
 
     if not client:
@@ -166,9 +165,7 @@ async def update_api_client(
     db: AsyncSession = Depends(get_db),
 ):
     """Update API client details."""
-    result = await db.execute(
-        select(APIClient).where(APIClient.id == client_id)
-    )
+    result = await db.execute(select(APIClient).where(APIClient.id == client_id))
     client = result.scalar_one_or_none()
 
     if not client:
@@ -179,7 +176,7 @@ async def update_api_client(
 
     # Update fields
     update_dict = update_data.model_dump(exclude_unset=True)
-    
+
     # If tier is being updated, also update limits
     if "tier" in update_dict:
         client.tier = update_dict["tier"].lower()
@@ -209,9 +206,7 @@ async def regenerate_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Regenerate API key for a client."""
-    result = await db.execute(
-        select(APIClient).where(APIClient.id == client_id)
-    )
+    result = await db.execute(select(APIClient).where(APIClient.id == client_id))
     client = result.scalar_one_or_none()
 
     if not client:
@@ -243,9 +238,7 @@ async def get_client_usage(
     db: AsyncSession = Depends(get_db),
 ):
     """Get usage statistics for an API client."""
-    result = await db.execute(
-        select(APIClient).where(APIClient.id == client_id)
-    )
+    result = await db.execute(select(APIClient).where(APIClient.id == client_id))
     client = result.scalar_one_or_none()
 
     if not client:
@@ -280,9 +273,7 @@ async def delete_api_client(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete (deactivate) an API client."""
-    result = await db.execute(
-        select(APIClient).where(APIClient.id == client_id)
-    )
+    result = await db.execute(select(APIClient).where(APIClient.id == client_id))
     client = result.scalar_one_or_none()
 
     if not client:

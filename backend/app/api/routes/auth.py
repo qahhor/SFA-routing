@@ -1,6 +1,7 @@
 """
 Authentication endpoints.
 """
+
 from typing import Optional
 from uuid import UUID
 
@@ -9,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.rate_limit import limiter, RateLimits
+from app.core.rate_limit import RateLimits, limiter
 from app.core.security import (
     authenticate_user,
     create_access_token,
@@ -29,7 +30,6 @@ from app.schemas.auth import (
     RegisterRequest,
     RegisterResponse,
     Token,
-    UserCreate,
     UserCreateByAdmin,
     UserListResponse,
     UserResponse,
@@ -41,6 +41,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 # ============== Public Endpoints ==============
+
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit(RateLimits.AUTH_REGISTER)
@@ -209,6 +210,7 @@ async def logout(
 
 # ============== Current User Endpoints ==============
 
+
 @router.get("/me", response_model=UserResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
@@ -278,6 +280,7 @@ async def change_password(
 
 # ============== Admin User Management ==============
 
+
 @router.get("/users", response_model=UserListResponse)
 async def list_users(
     page: int = 1,
@@ -300,10 +303,7 @@ async def list_users(
         query = query.where(User.is_active == is_active)
     if search:
         search_filter = f"%{search}%"
-        query = query.where(
-            (User.email.ilike(search_filter)) |
-            (User.full_name.ilike(search_filter))
-        )
+        query = query.where((User.email.ilike(search_filter)) | (User.full_name.ilike(search_filter)))
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())
@@ -409,7 +409,7 @@ async def update_user(
     if update.role and update.role != UserRole.ADMIN and user.role == UserRole.ADMIN:
         count_query = select(func.count()).where(
             User.role == UserRole.ADMIN,
-            User.is_active == True,
+            User.is_active.is_(True),
             User.id != user_id,
         )
         result = await db.execute(count_query)
@@ -459,7 +459,7 @@ async def delete_user(
     if user.role == UserRole.ADMIN:
         count_query = select(func.count()).where(
             User.role == UserRole.ADMIN,
-            User.is_active == True,
+            User.is_active.is_(True),
             User.id != user_id,
         )
         result = await db.execute(count_query)

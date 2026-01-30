@@ -7,10 +7,10 @@ the optimal solver for each problem.
 
 Can be upgraded to ML-based selection in the future.
 """
+
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 import numpy as np
 
@@ -170,9 +170,7 @@ class SmartSolverSelector:
         # Score candidates
         scores = {}
         for solver_type in candidates:
-            scores[solver_type] = self._score_solver(
-                solver_type, features, prefer_speed, prefer_quality
-            )
+            scores[solver_type] = self._score_solver(solver_type, features, prefer_speed, prefer_quality)
 
         # Select best
         best_solver = max(scores, key=scores.get)
@@ -196,9 +194,7 @@ class SmartSolverSelector:
             window_widths = []
             for job in problem.jobs:
                 if job.time_window_start and job.time_window_end:
-                    width = (
-                        job.time_window_end - job.time_window_start
-                    ).total_seconds() / 3600
+                    width = (job.time_window_end - job.time_window_start).total_seconds() / 3600
                     window_widths.append(width)
 
             if window_widths:
@@ -207,10 +203,7 @@ class SmartSolverSelector:
                 tw_tightness = max(0, min(1, 1 - (avg_width - 1) / 7))
 
         # Capacity analysis
-        has_capacity = any(
-            v.capacity_kg and v.capacity_kg > 0
-            for v in (problem.vehicles or [])
-        )
+        has_capacity = any(v.capacity_kg and v.capacity_kg > 0 for v in (problem.vehicles or []))
         capacity_utilization = 0.0
         if has_capacity and problem.vehicles:
             total_demand = sum(j.demand_kg or 0 for j in problem.jobs)
@@ -246,32 +239,23 @@ class SmartSolverSelector:
             constraint_complexity += 2
 
         # Check advanced constraints
-        has_pickup_delivery = any(
-            hasattr(j, "pickup_location") and j.pickup_location
-            for j in problem.jobs
-        )
+        has_pickup_delivery = any(hasattr(j, "pickup_location") and j.pickup_location for j in problem.jobs)
         has_multi_depot = (
             problem.vehicles
-            and len(set(
-                (v.start_location.latitude, v.start_location.longitude)
-                for v in problem.vehicles
-                if v.start_location
-            )) > 1
+            and len(
+                set(
+                    (v.start_location.latitude, v.start_location.longitude)
+                    for v in problem.vehicles
+                    if v.start_location
+                )
+            )
+            > 1
         )
-        has_breaks = any(
-            v.breaks for v in (problem.vehicles or [])
-        )
-        has_skills = any(
-            hasattr(j, "required_skills") and j.required_skills
-            for j in problem.jobs
-        )
+        has_breaks = any(v.breaks for v in (problem.vehicles or []))
+        has_skills = any(hasattr(j, "required_skills") and j.required_skills for j in problem.jobs)
 
         # Estimated solve time factor
-        solve_time_factor = (
-            n_jobs / 100 *
-            (1 + constraint_complexity / 5) *
-            (1 + tw_tightness)
-        )
+        solve_time_factor = n_jobs / 100 * (1 + constraint_complexity / 5) * (1 + tw_tightness)
 
         return ProblemFeatures(
             n_jobs=n_jobs,

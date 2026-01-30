@@ -6,6 +6,7 @@ Features:
 - Exponential backoff retry logic
 - Batched matrix calculation for large coordinate sets
 """
+
 import asyncio
 import logging
 from dataclasses import dataclass
@@ -14,7 +15,7 @@ from typing import Optional
 import httpx
 
 from app.core.config import settings
-from app.core.redis import redis_client, CacheTTL
+from app.core.redis import CacheTTL, redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class OSRMError(Exception):
 @dataclass
 class RouteResult:
     """Result of a route calculation."""
+
     distance_meters: float
     duration_seconds: float
     geometry: Optional[dict] = None
@@ -39,6 +41,7 @@ class RouteResult:
 @dataclass
 class MatrixResult:
     """Result of a distance matrix calculation."""
+
     distances: list[list[float]]  # meters
     durations: list[list[float]]  # seconds
 
@@ -104,25 +107,19 @@ class OSRMClient:
                 )
             except httpx.RequestError as e:
                 last_error = e
-                logger.warning(
-                    f"OSRM {operation} network error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}"
-                )
+                logger.warning(f"OSRM {operation} network error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
             except OSRMError:
                 raise
             except Exception as e:
                 last_error = e
-                logger.warning(
-                    f"OSRM {operation} error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}"
-                )
+                logger.warning(f"OSRM {operation} error (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
 
             if attempt < self.MAX_RETRIES - 1:
-                delay = self.RETRY_BASE_DELAY * (2 ** attempt)
+                delay = self.RETRY_BASE_DELAY * (2**attempt)
                 logger.info(f"Retrying OSRM {operation} in {delay}s...")
                 await asyncio.sleep(delay)
 
-        raise OSRMError(
-            f"OSRM {operation} failed after {self.MAX_RETRIES} attempts: {last_error}"
-        )
+        raise OSRMError(f"OSRM {operation} failed after {self.MAX_RETRIES} attempts: {last_error}")
 
     async def get_route(
         self,
@@ -295,9 +292,7 @@ class OSRMClient:
                     batch_coords = coordinates[i:batch_end_i]
                     result = await self.get_table(batch_coords, profile, use_cache=use_cache)
                 else:
-                    result = await self.get_table(
-                        batch_coords, profile, sources, destinations, use_cache=use_cache
-                    )
+                    result = await self.get_table(batch_coords, profile, sources, destinations, use_cache=use_cache)
 
                 # Fill in the result matrices
                 for ii, src_idx in enumerate(range(i, batch_end_i)):

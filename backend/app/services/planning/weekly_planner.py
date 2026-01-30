@@ -8,37 +8,37 @@ Central Asia specific features:
 - Summer early start (07:00)
 - Visit prioritization based on FMCG factors
 """
+
 import uuid
-from dataclasses import dataclass, field
-from datetime import date, time, timedelta, datetime
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
 from typing import Optional
 
 import numpy as np
 from sklearn.cluster import KMeans
 
-from app.core.config import settings
 from app.models.agent import Agent
 from app.models.client import Client, ClientCategory
-from app.models.visit_plan import VisitPlan, VisitStatus
 from app.services.routing.osrm_client import OSRMClient, osrm_client
-from app.services.solvers.vroom_solver import VROOMSolver, vroom_solver
 from app.services.solvers.solver_interface import (
-    RegionalConstraints,
-    RegionalConfig,
-    SolverFactory,
-    SolverType,
-    RoutingProblem,
-    VehicleConfig,
+    Break,
     Job,
     Location,
+    RegionalConfig,
+    RegionalConstraints,
+    RoutingProblem,
+    SolverFactory,
+    SolverType,
     TransportMode,
-    Break,
+    VehicleConfig,
 )
+from app.services.solvers.vroom_solver import VROOMSolver, vroom_solver
 
 
 @dataclass
 class DailyPlan:
     """Plan for a single day."""
+
     date: date
     visits: list["PlannedVisit"]
     total_distance_km: float
@@ -49,6 +49,7 @@ class DailyPlan:
 @dataclass
 class PlannedVisit:
     """Planned visit to a client."""
+
     client_id: uuid.UUID
     client_name: str
     sequence_number: int
@@ -69,6 +70,7 @@ class PlannedVisit:
 @dataclass
 class WeeklyPlan:
     """Complete weekly plan for an agent."""
+
     agent_id: uuid.UUID
     week_start: date
     daily_plans: list[DailyPlan]
@@ -94,6 +96,7 @@ class WeeklyPlan:
         # Workload balance (coefficient of variation)
         if len(active_days) > 1 and self.avg_visits_per_day > 0:
             import statistics
+
             std_dev = statistics.stdev(active_days)
             cv = std_dev / self.avg_visits_per_day
             self.workload_balance_score = max(0, 1 - cv)
@@ -101,10 +104,7 @@ class WeeklyPlan:
             self.workload_balance_score = 1.0
 
         # Travel vs service ratio (target: 30/70)
-        total_service_minutes = sum(
-            sum(15 for _ in dp.visits)  # Assuming 15 min per visit
-            for dp in self.daily_plans
-        )
+        total_service_minutes = sum(sum(15 for _ in dp.visits) for dp in self.daily_plans)  # Assuming 15 min per visit
         total_time = self.total_duration_minutes
         if total_time > 0:
             travel_ratio = (total_time - total_service_minutes) / total_time
@@ -288,29 +288,26 @@ class WeeklyPlanner:
         if use_osrm:
             try:
                 from app.services.clustering import clustering_service
-                
+
                 result = await clustering_service.cluster_hierarchical_osrm(
                     clients,
                     n_clusters=n_clusters,
                     use_cache=True,
                 )
-                
+
                 # Map indices back to clients
                 clusters: dict[int, list[Client]] = {}
                 for cluster_id, indices in result.clusters.items():
                     clusters[cluster_id] = [clients[i] for i in indices]
-                
+
                 return clusters
-                
+
             except Exception as e:
                 # Log error and fallback to K-means
                 print(f"OSRM clustering failed, falling back to K-means: {e}")
 
         # Fallback: K-means with Euclidean distance
-        coords = np.array([
-            [float(c.latitude), float(c.longitude)]
-            for c in clients
-        ])
+        coords = np.array([[float(c.latitude), float(c.longitude)] for c in clients])
 
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         labels = kmeans.fit_predict(coords)
@@ -353,9 +350,7 @@ class WeeklyPlanner:
         clusters = await self.cluster_by_geography(clients, n_clusters=n_days)
 
         # Initialize daily assignments
-        daily_assignments: dict[int, list[Client]] = {
-            day: [] for day in range(n_days)
-        }
+        daily_assignments: dict[int, list[Client]] = {day: [] for day in range(n_days)}
 
         # Track A-class clients for second visit
         a_class_clients = [c for c in clients if c.category == ClientCategory.A]
@@ -369,10 +364,7 @@ class WeeklyPlanner:
                     daily_assignments[day].append(client)
                 else:
                     # Find day with least visits
-                    min_day = min(
-                        range(n_days),
-                        key=lambda d: len(daily_assignments[d])
-                    )
+                    min_day = min(range(n_days), key=lambda d: len(daily_assignments[d]))
                     daily_assignments[min_day].append(client)
 
         # Add second visits for A-class clients on different days
@@ -387,17 +379,15 @@ class WeeklyPlanner:
             if first_visit_day is not None:
                 # Find a different day with capacity
                 second_day_candidates = [
-                    d for d in range(n_days)
+                    d
+                    for d in range(n_days)
                     if d != first_visit_day
                     and len(daily_assignments[d]) < max_per_day
                     and abs(d - first_visit_day) >= 2  # At least 2 days apart
                 ]
 
                 if second_day_candidates:
-                    second_day = min(
-                        second_day_candidates,
-                        key=lambda d: len(daily_assignments[d])
-                    )
+                    second_day = min(second_day_candidates, key=lambda d: len(daily_assignments[d]))
                     daily_assignments[second_day].append(client)
 
         return daily_assignments
@@ -432,31 +422,35 @@ class WeeklyPlanner:
         # Get adjusted work hours
         work_start = self.get_adjusted_work_start(agent, route_date)
         is_friday = route_date.weekday() == 4
-        
+
         # Define breaks
         breaks = []
-        
+
         # Lunch break
         lunch_start_time = self.constraints.lunch_break_start
         lunch_end_time = self.constraints.lunch_break_end
-        breaks.append(Break(
-            id=1,
-            start=lunch_start_time,
-            end=lunch_end_time,
-            description="Lunch Break",
-            duration_minutes=60, # Approximation if dates needed
-        ))
+        breaks.append(
+            Break(
+                id=1,
+                start=lunch_start_time,
+                end=lunch_end_time,
+                description="Lunch Break",
+                duration_minutes=60,  # Approximation if dates needed
+            )
+        )
 
         # Friday prayer (Uzbekistan)
         if is_friday and self.region == RegionalConfig.UZBEKISTAN:
             if self.constraints.friday_prayer_start:
-                breaks.append(Break(
-                    id=2,
-                    start=self.constraints.friday_prayer_start,
-                    end=self.constraints.friday_prayer_end,
-                    description="Friday Prayer",
-                    duration_minutes=90,
-                ))
+                breaks.append(
+                    Break(
+                        id=2,
+                        start=self.constraints.friday_prayer_start,
+                        end=self.constraints.friday_prayer_end,
+                        description="Friday Prayer",
+                        duration_minutes=90,
+                    )
+                )
 
         # Build VehicleConfig
         start_loc = Location(
@@ -468,16 +462,13 @@ class WeeklyPlanner:
         end_loc = None
         if agent.end_latitude and agent.end_longitude:
             end_loc = Location(
-                id=uuid.uuid4(),
-                name="End",
-                latitude=float(agent.end_latitude),
-                longitude=float(agent.end_longitude)
+                id=uuid.uuid4(), name="End", latitude=float(agent.end_latitude), longitude=float(agent.end_longitude)
             )
 
         vehicle = VehicleConfig(
             id=agent.id,
             name=agent.name,
-            capacity_kg=1000, # Dummy capacity for sales agent
+            capacity_kg=1000,  # Dummy capacity for sales agent
             start_location=start_loc,
             end_location=end_loc,
             work_start=work_start,
@@ -488,47 +479,46 @@ class WeeklyPlanner:
         # Build Jobs
         jobs = []
         clients_map = {c.id: c for c in clients}
-        
+
         for idx, client in enumerate(clients):
             priority = 50
             if client_priorities:
                 priority = int(client_priorities.get(client.id, 50))
-            
+
             # Use client time window if available, else work hours
             # Note: We rely on Breaks to handle lunch exclusions
             tw_start = datetime.combine(route_date, client.time_window_start or work_start)
             tw_end = datetime.combine(route_date, client.time_window_end or agent.work_end)
 
-            jobs.append(Job(
-                id=client.id, # Use Client UUID as Job ID
-                location=Location(
-                    id=uuid.uuid4(),
-                    name=client.name,
-                    latitude=float(client.latitude),
-                    longitude=float(client.longitude),
-                    service_time_minutes=client.visit_duration_minutes,
-                ),
-                priority=priority,
-                time_window_start=tw_start,
-                time_window_end=tw_end,
-            ))
+            jobs.append(
+                Job(
+                    id=client.id,  # Use Client UUID as Job ID
+                    location=Location(
+                        id=uuid.uuid4(),
+                        name=client.name,
+                        latitude=float(client.latitude),
+                        longitude=float(client.longitude),
+                        service_time_minutes=client.visit_duration_minutes,
+                    ),
+                    priority=priority,
+                    time_window_start=tw_start,
+                    time_window_end=tw_end,
+                )
+            )
 
         # Create Problem
         problem = RoutingProblem(
             jobs=jobs,
             vehicles=[vehicle],
             planning_date=route_date,
-            transport_mode=TransportMode.CAR, # Agents drive
+            transport_mode=TransportMode.CAR,  # Agents drive
             regional_constraints=self.constraints,
         )
 
         # Solve
         try:
-            solution = await SolverFactory.solve_with_fallback(
-                problem,
-                preferred=SolverType.VROOM
-            )
-        except Exception as e:
+            solution = await SolverFactory.solve_with_fallback(problem, preferred=SolverType.VROOM)
+        except Exception:
             # Fallback
             return self._create_fallback_plan(agent, clients, route_date)
 
@@ -548,25 +538,27 @@ class WeeklyPlanner:
 
                     # Check lunch overlap
                     arrival_time = step.arrival_time.time()
-                    is_during_lunch = (
-                        lunch_start_time <= arrival_time <= lunch_end_time
-                    )
+                    is_during_lunch = lunch_start_time <= arrival_time <= lunch_end_time
 
-                    visits.append(PlannedVisit(
-                        client_id=client.id,
-                        client_name=client.name,
-                        sequence_number=sequence,
-                        planned_time=arrival_time,
-                        estimated_arrival=step.arrival_time.time(),
-                        estimated_departure=step.departure_time.time(),
-                        distance_from_previous_km=step.distance_from_previous_m / 1000,
-                        duration_from_previous_minutes=int(step.duration_from_previous_s / 60),
-                        latitude=float(client.latitude),
-                        longitude=float(client.longitude),
-                        priority_score=client_priorities.get(client.id, 0) if client_priorities else 0,
-                        is_during_lunch=is_during_lunch,
-                        client_category=client.category if isinstance(client.category, str) else client.category.value,
-                    ))
+                    visits.append(
+                        PlannedVisit(
+                            client_id=client.id,
+                            client_name=client.name,
+                            sequence_number=sequence,
+                            planned_time=arrival_time,
+                            estimated_arrival=step.arrival_time.time(),
+                            estimated_departure=step.departure_time.time(),
+                            distance_from_previous_km=step.distance_from_previous_m / 1000,
+                            duration_from_previous_minutes=int(step.duration_from_previous_s / 60),
+                            latitude=float(client.latitude),
+                            longitude=float(client.longitude),
+                            priority_score=client_priorities.get(client.id, 0) if client_priorities else 0,
+                            is_during_lunch=is_during_lunch,
+                            client_category=(
+                                client.category if isinstance(client.category, str) else client.category.value
+                            ),
+                        )
+                    )
 
             return DailyPlan(
                 date=route_date,
@@ -606,23 +598,21 @@ class WeeklyPlanner:
         current_time = agent.work_start
 
         for idx, client in enumerate(clients):
-            visits.append(PlannedVisit(
-                client_id=client.id,
-                client_name=client.name,
-                sequence_number=idx + 1,
-                planned_time=current_time,
-                estimated_arrival=current_time,
-                estimated_departure=self._add_minutes(
-                    current_time, client.visit_duration_minutes
-                ),
-                distance_from_previous_km=0,
-                duration_from_previous_minutes=0,
-                latitude=float(client.latitude),
-                longitude=float(client.longitude),
-            ))
-            current_time = self._add_minutes(
-                current_time, client.visit_duration_minutes + 15
+            visits.append(
+                PlannedVisit(
+                    client_id=client.id,
+                    client_name=client.name,
+                    sequence_number=idx + 1,
+                    planned_time=current_time,
+                    estimated_arrival=current_time,
+                    estimated_departure=self._add_minutes(current_time, client.visit_duration_minutes),
+                    distance_from_previous_km=0,
+                    duration_from_previous_minutes=0,
+                    latitude=float(client.latitude),
+                    longitude=float(client.longitude),
+                )
             )
+            current_time = self._add_minutes(current_time, client.visit_duration_minutes + 15)
 
         return DailyPlan(
             date=route_date,
@@ -698,15 +688,11 @@ class WeeklyPlanner:
 
             # Recalculate priorities for specific day (payday might differ)
             day_priorities = {
-                c.id: self.calculate_client_priority(
-                    c, route_date, stock_levels, debts, active_promos
-                )
+                c.id: self.calculate_client_priority(c, route_date, stock_levels, debts, active_promos)
                 for c in day_clients
             }
 
-            daily_plan = await self.optimize_day_route(
-                agent, day_clients, route_date, day_priorities
-            )
+            daily_plan = await self.optimize_day_route(agent, day_clients, route_date, day_priorities)
             daily_plans.append(daily_plan)
 
         # Calculate totals

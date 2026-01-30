@@ -1,6 +1,7 @@
 """
 Security utilities for authentication and authorization.
 """
+
 import secrets
 from datetime import datetime, timedelta
 from typing import Optional
@@ -23,6 +24,7 @@ security_scheme = HTTPBearer(auto_error=False)
 
 # ============== Password Utilities ==============
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
     return pwd_context.verify(plain_password, hashed_password)
@@ -35,18 +37,13 @@ def get_password_hash(password: str) -> str:
 
 # ============== Token Utilities ==============
 
-def create_access_token(
-    user_id: UUID,
-    role: UserRole,
-    expires_delta: Optional[timedelta] = None
-) -> str:
+
+def create_access_token(user_id: UUID, role: UserRole, expires_delta: Optional[timedelta] = None) -> str:
     """Create JWT access token."""
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(
-            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode = {
         "sub": str(user_id),
@@ -55,11 +52,7 @@ def create_access_token(
         "type": "access",
     }
 
-    encoded_jwt = jwt.encode(
-        to_encode,
-        settings.SECRET_KEY,
-        algorithm=settings.ALGORITHM
-    )
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
 
@@ -74,28 +67,21 @@ def create_refresh_token(user_id: UUID) -> str:
         "jti": secrets.token_hex(16),  # unique token id
     }
 
-    encoded_jwt = jwt.encode(
-        to_encode,
-        settings.SECRET_KEY,
-        algorithm=settings.ALGORITHM
-    )
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
 
 def decode_token(token: str) -> Optional[dict]:
     """Decode and validate JWT token."""
     try:
-        payload = jwt.decode(
-            token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
-        )
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
     except JWTError:
         return None
 
 
 # ============== Dependencies ==============
+
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
@@ -129,9 +115,7 @@ async def get_current_user(
     except ValueError:
         raise credentials_exception
 
-    result = await db.execute(
-        select(User).where(User.id == user_uuid)
-    )
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -174,8 +158,10 @@ async def get_optional_user(
 
 # ============== Role-based Dependencies ==============
 
+
 def require_role(*allowed_roles: UserRole):
     """Dependency factory for role-based access control."""
+
     async def role_checker(
         current_user: User = Depends(get_current_user),
     ) -> User:
@@ -218,15 +204,14 @@ async def get_dispatcher_user(
 
 # ============== Utility Functions ==============
 
+
 async def authenticate_user(
     db: AsyncSession,
     email: str,
     password: str,
 ) -> Optional[User]:
     """Authenticate user by email and password."""
-    result = await db.execute(
-        select(User).where(User.email == email)
-    )
+    result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -240,15 +225,11 @@ async def authenticate_user(
 
 async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     """Get user by email."""
-    result = await db.execute(
-        select(User).where(User.email == email)
-    )
+    result = await db.execute(select(User).where(User.email == email))
     return result.scalar_one_or_none()
 
 
 async def get_user_by_id(db: AsyncSession, user_id: UUID) -> Optional[User]:
     """Get user by ID."""
-    result = await db.execute(
-        select(User).where(User.id == user_id)
-    )
+    result = await db.execute(select(User).where(User.id == user_id))
     return result.scalar_one_or_none()

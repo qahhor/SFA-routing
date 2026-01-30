@@ -7,32 +7,27 @@ Handles real-time route adjustments based on:
 - Traffic conditions
 - Order cancellations/changes
 """
-import asyncio
+
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.agent import Agent
-from app.models.client import Client
 from app.models.delivery_order import DeliveryOrder
 from app.models.delivery_route import DeliveryRoute
 from app.models.visit_plan import VisitPlan
+from app.services.realtime.websocket_manager import manager
 from app.services.routing.osrm_client import osrm_client
 from app.services.solvers.solver_interface import (
+    Location,
     SolverFactory,
     SolverType,
-    RoutingProblem,
-    Location,
-    Job,
-    VehicleConfig,
 )
-from app.services.realtime.websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +35,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RerouteRequest:
     """Request for route re-optimization."""
+
     route_id: Optional[UUID] = None
     agent_id: Optional[UUID] = None
     vehicle_id: Optional[UUID] = None
@@ -53,6 +49,7 @@ class RerouteRequest:
 @dataclass
 class RerouteResult:
     """Result of re-routing operation."""
+
     success: bool
     route_id: Optional[UUID] = None
     message: str = ""
@@ -131,18 +128,13 @@ class ReroutingService:
         expected_lon = float(next_client.longitude)
 
         # Simple distance check (Haversine would be better)
-        distance = await self._calculate_distance(
-            current_lat, current_lon,
-            expected_lat, expected_lon
-        )
+        distance = await self._calculate_distance(current_lat, current_lon, expected_lat, expected_lon)
 
         if distance < self.GPS_DEVIATION_THRESHOLD_M:
             return None  # Within tolerance
 
         # Trigger re-route
-        logger.info(
-            f"Agent {agent_id} deviated {distance:.0f}m from route, triggering re-route"
-        )
+        logger.info(f"Agent {agent_id} deviated {distance:.0f}m from route, triggering re-route")
 
         return await self.reroute_agent_visits(
             db=db,
@@ -234,14 +226,16 @@ class ReroutingService:
 
             # Calculate savings
             old_distance = await self._calculate_route_distance(
-                [(current_lat, current_lon)] +
-                [(float(v.client.latitude), float(v.client.longitude))
-                 for v in remaining_visits if v.client]
+                [(current_lat, current_lon)]
+                + [(float(v.client.latitude), float(v.client.longitude)) for v in remaining_visits if v.client]
             )
             new_distance = await self._calculate_route_distance(
-                [(current_lat, current_lon)] +
-                [(float(visit_map[i].client.latitude), float(visit_map[i].client.longitude))
-                 for i in optimal_order if i in visit_map and visit_map[i].client]
+                [(current_lat, current_lon)]
+                + [
+                    (float(visit_map[i].client.latitude), float(visit_map[i].client.longitude))
+                    for i in optimal_order
+                    if i in visit_map and visit_map[i].client
+                ]
             )
 
             distance_saved = max(0, old_distance - new_distance)
@@ -306,10 +300,7 @@ class ReroutingService:
             )
 
         # Get pending stops
-        pending_stops = [
-            s for s in route.stops
-            if s.status in ("pending", "assigned")
-        ]
+        pending_stops = [s for s in route.stops if s.status in ("pending", "assigned")]
 
         if len(pending_stops) < 2:
             return RerouteResult(
@@ -419,16 +410,12 @@ class ReroutingService:
         """
         # Get route and new order
         route_result = await db.execute(
-            select(DeliveryRoute)
-            .where(DeliveryRoute.id == route_id)
-            .options(selectinload(DeliveryRoute.stops))
+            select(DeliveryRoute).where(DeliveryRoute.id == route_id).options(selectinload(DeliveryRoute.stops))
         )
         route = route_result.scalar_one_or_none()
 
         order_result = await db.execute(
-            select(DeliveryOrder)
-            .where(DeliveryOrder.id == order_id)
-            .options(selectinload(DeliveryOrder.client))
+            select(DeliveryOrder).where(DeliveryOrder.id == order_id).options(selectinload(DeliveryOrder.client))
         )
         order = order_result.scalar_one_or_none()
 
@@ -465,9 +452,7 @@ class ReroutingService:
             best_increase = float("inf")
 
             for i in range(len(pending_stops) + 1):
-                increase = await self._calculate_insertion_cost(
-                    pending_stops, i, new_lat, new_lon
-                )
+                increase = await self._calculate_insertion_cost(pending_stops, i, new_lat, new_lon)
                 if increase < best_increase:
                     best_increase = increase
                     best_pos = i + 1  # 1-indexed sequence
@@ -513,24 +498,26 @@ class ReroutingService:
 
     async def _calculate_distance(
         self,
-        lat1: float, lon1: float,
-        lat2: float, lon2: float,
+        lat1: float,
+        lon1: float,
+        lat2: float,
+        lon2: float,
     ) -> float:
         """Calculate distance between two points using OSRM."""
         try:
-            result = await osrm_client.get_route(
-                [(lon1, lat1), (lon2, lat2)]
-            )
+            result = await osrm_client.get_route([(lon1, lat1), (lon2, lat2)])
             return result.distance_meters
         except Exception:
             # Fallback to Haversine
             import math
+
             R = 6371000  # Earth radius in meters
             dlat = math.radians(lat2 - lat1)
             dlon = math.radians(lon2 - lon1)
-            a = (math.sin(dlat/2)**2 +
-                 math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
-                 math.sin(dlon/2)**2)
+            a = (
+                math.sin(dlat / 2) ** 2
+                + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+            )
             return R * 2 * math.asin(math.sqrt(a))
 
     async def _calculate_route_distance(
@@ -565,8 +552,7 @@ class ReroutingService:
             if stops:
                 next_stop = stops[0]
                 return await self._calculate_distance(
-                    new_lat, new_lon,
-                    float(next_stop.latitude), float(next_stop.longitude)
+                    new_lat, new_lon, float(next_stop.latitude), float(next_stop.longitude)
                 )
             return 0
 
@@ -574,8 +560,7 @@ class ReroutingService:
             # Insert at end
             prev_stop = stops[-1]
             return await self._calculate_distance(
-                float(prev_stop.latitude), float(prev_stop.longitude),
-                new_lat, new_lon
+                float(prev_stop.latitude), float(prev_stop.longitude), new_lat, new_lon
             )
 
         else:
@@ -585,21 +570,16 @@ class ReroutingService:
 
             # Old distance: prev -> next
             old_dist = await self._calculate_distance(
-                float(prev_stop.latitude), float(prev_stop.longitude),
-                float(next_stop.latitude), float(next_stop.longitude)
+                float(prev_stop.latitude),
+                float(prev_stop.longitude),
+                float(next_stop.latitude),
+                float(next_stop.longitude),
             )
 
             # New distance: prev -> new -> next
-            new_dist = (
-                await self._calculate_distance(
-                    float(prev_stop.latitude), float(prev_stop.longitude),
-                    new_lat, new_lon
-                ) +
-                await self._calculate_distance(
-                    new_lat, new_lon,
-                    float(next_stop.latitude), float(next_stop.longitude)
-                )
-            )
+            new_dist = await self._calculate_distance(
+                float(prev_stop.latitude), float(prev_stop.longitude), new_lat, new_lon
+            ) + await self._calculate_distance(new_lat, new_lon, float(next_stop.latitude), float(next_stop.longitude))
 
             return new_dist - old_dist
 

@@ -1,6 +1,7 @@
 """
 Pydantic schemas for async job tracking.
 """
+
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field
 
 class JobStatus(str, Enum):
     """Status of an async job."""
+
     PENDING = "pending"
     STARTED = "started"
     SUCCESS = "success"
@@ -21,6 +23,7 @@ class JobStatus(str, Enum):
 
 class JobType(str, Enum):
     """Type of optimization job."""
+
     WEEKLY_PLAN = "weekly_plan"
     DELIVERY_OPTIMIZE = "delivery_optimize"
     DELIVERY_ROUTES = "delivery_routes"
@@ -30,12 +33,14 @@ class JobType(str, Enum):
 
 class JobCreate(BaseModel):
     """Schema for creating a new job."""
+
     job_type: JobType
     params: dict[str, Any] = Field(default_factory=dict)
 
 
 class JobResponse(BaseModel):
     """Schema for job submission response."""
+
     job_id: str = Field(..., description="Celery task ID")
     job_type: JobType
     status: JobStatus = JobStatus.PENDING
@@ -52,6 +57,7 @@ class JobResponse(BaseModel):
 
 class JobStatusResponse(BaseModel):
     """Schema for job status check."""
+
     job_id: str
     job_type: Optional[JobType] = None
     status: JobStatus
@@ -65,12 +71,14 @@ class JobStatusResponse(BaseModel):
 
 class JobListResponse(BaseModel):
     """Schema for list of jobs."""
+
     items: list[JobResponse]
     total: int
 
 
 class WeeklyPlanJobParams(BaseModel):
     """Parameters for weekly plan generation job."""
+
     agent_id: UUID
     week_start_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="ISO date format")
     week_number: int = Field(1, ge=1, le=2)
@@ -78,6 +86,7 @@ class WeeklyPlanJobParams(BaseModel):
 
 class DeliveryOptimizeJobParams(BaseModel):
     """Parameters for delivery optimization job."""
+
     order_ids: list[UUID]
     vehicle_ids: list[UUID]
     route_date: str = Field(..., description="ISO format date (YYYY-MM-DD)")
@@ -85,6 +94,7 @@ class DeliveryOptimizeJobParams(BaseModel):
 
 class DeliveryRoutesJobParams(BaseModel):
     """Parameters for delivery routes optimization job."""
+
     order_ids: list[UUID] = Field(..., min_length=1)
     vehicle_ids: list[UUID] = Field(..., min_length=1)
     route_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="ISO date format")
@@ -92,12 +102,14 @@ class DeliveryRoutesJobParams(BaseModel):
 
 class AsyncJobRequest(BaseModel):
     """Request to start an async optimization job."""
+
     job_type: JobType
     params: dict[str, Any]
 
 
 class AsyncJobResponse(BaseModel):
     """Response after starting an async job."""
+
     job_id: str
     job_type: JobType
     status: JobStatus = JobStatus.PENDING

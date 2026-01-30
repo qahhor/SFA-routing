@@ -31,7 +31,7 @@ jobs:
         run: |
           pip install flake8
           cd backend
-          flake8 app --max-line-length=120 --ignore=E501,W503,E402 --exclude=__pycache__,alembic
+          flake8 app --max-line-length=120 --ignore=E501,W503,E402,E203 --exclude=__pycache__,alembic
 
       - name: Run Tests
         run: |

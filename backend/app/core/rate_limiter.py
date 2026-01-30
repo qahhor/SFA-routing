@@ -3,10 +3,10 @@ Rate limiting middleware using Redis.
 
 Implements sliding window rate limiting per API client.
 """
-import time
-from typing import Optional
 
-from fastapi import Depends, HTTPException, Request, status
+import time
+
+from fastapi import HTTPException, Request, status
 
 from app.core.config import settings
 
@@ -14,7 +14,7 @@ from app.core.config import settings
 class RateLimiter:
     """
     Redis-based rate limiter using sliding window algorithm.
-    
+
     Each client gets their own rate limit bucket in Redis.
     """
 
@@ -27,6 +27,7 @@ class RateLimiter:
         if self._redis is None:
             try:
                 import redis.asyncio as redis
+
                 self._redis = redis.from_url(
                     self.redis_url,
                     encoding="utf-8",
@@ -45,16 +46,16 @@ class RateLimiter:
     ) -> tuple[bool, dict]:
         """
         Check if client is rate limited.
-        
+
         Uses sliding window algorithm:
         - Key: rate_limit:{client_id}
         - Value: sorted set of request timestamps
-        
+
         Args:
             client_id: Unique client identifier
             limit: Maximum requests per window
             window_seconds: Time window in seconds
-            
+
         Returns:
             Tuple of (is_limited, info_dict)
         """
@@ -70,19 +71,19 @@ class RateLimiter:
         try:
             # Start pipeline
             pipe = redis.pipeline()
-            
+
             # Remove old entries outside the window
             pipe.zremrangebyscore(key, 0, window_start)
-            
+
             # Count current requests in window
             pipe.zcard(key)
-            
+
             # Add current request
             pipe.zadd(key, {str(now): now})
-            
+
             # Set expiry on key
             pipe.expire(key, window_seconds + 1)
-            
+
             # Execute pipeline
             results = await pipe.execute()
             current_count = results[1]
@@ -120,7 +121,7 @@ rate_limiter = RateLimiter()
 async def rate_limit_middleware(request: Request, call_next):
     """
     Rate limiting middleware.
-    
+
     Checks rate limit based on API client if authenticated,
     otherwise uses IP address.
     """
@@ -168,7 +169,7 @@ async def rate_limit_middleware(request: Request, call_next):
 def create_rate_limit_dependency(requests_per_minute: int = None):
     """
     Create a rate limit dependency with custom limit.
-    
+
     Usage:
         @router.post("/heavy-operation")
         async def heavy_operation(
@@ -176,6 +177,7 @@ def create_rate_limit_dependency(requests_per_minute: int = None):
         ):
             ...
     """
+
     async def rate_limit_check(request: Request):
         client_id = None
         limit = requests_per_minute or 10

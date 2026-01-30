@@ -1,7 +1,8 @@
 """
 Vehicle schemas.
 """
-from datetime import time, datetime
+
+from datetime import datetime, time
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -10,8 +11,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.validators import (
     Latitude,
-    Longitude,
     LatitudeOptional,
+    Longitude,
     LongitudeOptional,
     PhoneNumber,
     PositiveDecimal,
@@ -20,12 +21,11 @@ from app.schemas.validators import (
 
 class VehicleBase(BaseModel):
     """Base vehicle schema."""
+
     name: str = Field(..., description="Vehicle name", min_length=1, max_length=100)
     license_plate: str = Field(..., description="License plate number", min_length=1, max_length=20)
     capacity_kg: PositiveDecimal
-    capacity_volume_m3: Optional[Decimal] = Field(
-        None, gt=0, description="Volume capacity in m3"
-    )
+    capacity_volume_m3: Optional[Decimal] = Field(None, gt=0, description="Volume capacity in m3")
     start_latitude: Latitude
     start_longitude: Longitude
     end_latitude: LatitudeOptional = None
@@ -55,11 +55,11 @@ class VehicleBase(BaseModel):
 
 class VehicleCreate(VehicleBase):
     """Schema for creating a vehicle."""
-    pass
 
 
 class VehicleUpdate(BaseModel):
     """Schema for updating a vehicle."""
+
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     license_plate: Optional[str] = Field(None, min_length=1, max_length=20)
     capacity_kg: Optional[Decimal] = Field(None, gt=0)
@@ -79,6 +79,7 @@ class VehicleUpdate(BaseModel):
 
 class VehicleResponse(VehicleBase):
     """Schema for vehicle response."""
+
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -89,6 +90,7 @@ class VehicleResponse(VehicleBase):
 
 class VehicleListResponse(BaseModel):
     """Schema for vehicle list response."""
+
     items: list[VehicleResponse]
     total: int
     page: int

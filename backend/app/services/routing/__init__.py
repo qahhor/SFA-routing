@@ -6,13 +6,14 @@ Contains core routing services:
 - Route optimizer
 - Clustering algorithms
 """
-from app.services.routing.osrm_client import OSRMClient, osrm_client
-from app.services.routing.route_optimizer import RouteOptimizer, route_optimizer
+
 from app.services.routing.clustering import Clusterer
 from app.services.routing.distance_clustering import (
     DistanceBasedClusterer,
     distance_clusterer,
 )
+from app.services.routing.osrm_client import OSRMClient, osrm_client
+from app.services.routing.route_optimizer import RouteOptimizer, route_optimizer
 
 __all__ = [
     "OSRMClient",

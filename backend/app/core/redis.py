@@ -1,6 +1,7 @@
 """
 Redis client for caching.
 """
+
 import hashlib
 import json
 from typing import Any, Optional
@@ -95,6 +96,7 @@ class RedisClient:
 # Cache TTL constants (in seconds)
 class CacheTTL:
     """Cache TTL constants."""
+
     OSRM_MATRIX = 7 * 24 * 60 * 60  # 7 days
     OSRM_ROUTE = 24 * 60 * 60  # 1 day
     WEEKLY_PLAN = 60 * 60  # 1 hour

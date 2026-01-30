@@ -1,22 +1,23 @@
 """
 API routes module.
 """
+
 from fastapi import APIRouter
 
 from app.api.routes import (
     agents,
-    auth,
-    clients,
-    vehicles,
-    planning,
-    delivery,
-    health,
-    export,
     api_clients,
-    jobs,
+    auth,
     bulk,
-    webhooks,
+    clients,
+    delivery,
+    export,
+    health,
+    jobs,
+    planning,
     realtime,
+    vehicles,
+    webhooks,
 )
 
 api_router = APIRouter()

@@ -1,13 +1,12 @@
 """
 Vehicle model for delivery fleet.
 """
-import uuid
-from decimal import Decimal
+
 from datetime import time
+from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import String, Numeric, Boolean, Time
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Numeric, String, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base

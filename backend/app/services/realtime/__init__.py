@@ -6,28 +6,29 @@ Contains real-time processing services:
 - WebSocket manager for live updates
 - Spatial index for geo-queries
 """
+
 from app.services.realtime.event_pipeline import (
-    EventPipeline,
-    EventType,
-    EventPriority,
     BaseEvent,
-    GPSEvent,
-    TrafficEvent,
-    OrderEvent,
-    VisitEvent,
     EventHandler,
+    EventPipeline,
+    EventPriority,
+    EventType,
+    GPSEvent,
     GPSUpdateHandler,
-    TrafficAlertHandler,
     OrderCancelHandler,
+    OrderEvent,
+    TrafficAlertHandler,
+    TrafficEvent,
     VisitCompleteHandler,
+    VisitEvent,
 )
-from app.services.realtime.websocket_manager import WebSocketManager, ws_manager
 from app.services.realtime.spatial_index import (
-    SpatialEntity,
-    H3SpatialIndex,
     FallbackSpatialIndex,
+    H3SpatialIndex,
+    SpatialEntity,
     create_spatial_index,
 )
+from app.services.realtime.websocket_manager import WebSocketManager, ws_manager
 
 __all__ = [
     # Event pipeline
