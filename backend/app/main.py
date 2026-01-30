@@ -16,6 +16,7 @@ from app.core.logging import setup_logging, RequestLoggingMiddleware
 from app.core.middleware.idempotency import IdempotencyMiddleware
 from app.core.sentry import init_sentry
 from app.core.metrics import PrometheusMiddleware, metrics_endpoint, update_service_health
+from app.core.exceptions import register_exception_handlers
 from app.api.routes import api_router
 
 # Setup logging
@@ -99,6 +100,9 @@ def create_app() -> FastAPI:
         redoc_url=f"{settings.API_V1_PREFIX}/redoc",
         lifespan=lifespan,
     )
+
+    # Standardized exception handlers (must be registered first)
+    register_exception_handlers(app)
 
     # Rate limiting
     app.state.limiter = limiter

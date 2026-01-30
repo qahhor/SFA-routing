@@ -4,12 +4,16 @@ Agent (Sales Representative) API routes.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select, outerjoin
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user, get_dispatcher_user
+from app.core.exceptions import (
+    AgentNotFoundException,
+    DuplicateExternalIdException,
+)
 from app.models.agent import Agent
 from app.models.client import Client
 from app.models.user import User
@@ -33,7 +37,16 @@ async def list_agents(
     db: AsyncSession = Depends(get_db),
 ) -> AgentListResponse:
     """Get list of agents with pagination."""
-    query = select(Agent)
+    # Base query with client count (FIXED: N+1 query)
+    # Uses single query with LEFT JOIN and GROUP BY instead of N separate queries
+    query = (
+        select(
+            Agent,
+            func.count(Client.id).label("clients_count")
+        )
+        .outerjoin(Client, Agent.id == Client.agent_id)
+        .group_by(Agent.id)
+    )
 
     if is_active is not None:
         query = query.where(Agent.is_active == is_active)
@@ -44,24 +57,29 @@ async def list_agents(
             (Agent.external_id.ilike(f"%{search}%"))
         )
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
+    # Count total (without client count for efficiency)
+    count_subquery = select(Agent.id)
+    if is_active is not None:
+        count_subquery = count_subquery.where(Agent.is_active == is_active)
+    if search:
+        count_subquery = count_subquery.where(
+            (Agent.name.ilike(f"%{search}%")) |
+            (Agent.external_id.ilike(f"%{search}%"))
+        )
+    count_query = select(func.count()).select_from(count_subquery.subquery())
     total = await db.scalar(count_query)
 
-    # Get page
+    # Get page with client counts
     query = query.offset((page - 1) * size).limit(size)
     result = await db.execute(query)
-    agents = result.scalars().all()
+    rows = result.all()
 
-    # Get client counts
+    # Build response items
     items = []
-    for agent in agents:
-        client_count_query = select(func.count()).where(Client.agent_id == agent.id)
-        clients_count = await db.scalar(client_count_query)
-
+    for agent, clients_count in rows:
         agent_dict = {
             **agent.__dict__,
-            "clients_count": clients_count,
+            "clients_count": clients_count or 0,
         }
         items.append(AgentResponse.model_validate(agent_dict))
 
@@ -80,19 +98,26 @@ async def get_agent(
     db: AsyncSession = Depends(get_db),
 ) -> AgentResponse:
     """Get agent by ID."""
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
-    agent = result.scalar_one_or_none()
+    # Single query with client count
+    query = (
+        select(
+            Agent,
+            func.count(Client.id).label("clients_count")
+        )
+        .outerjoin(Client, Agent.id == Client.agent_id)
+        .where(Agent.id == agent_id)
+        .group_by(Agent.id)
+    )
+    result = await db.execute(query)
+    row = result.first()
 
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    if not row:
+        raise AgentNotFoundException(str(agent_id))
 
-    # Get client count
-    client_count_query = select(func.count()).where(Client.agent_id == agent.id)
-    clients_count = await db.scalar(client_count_query)
-
+    agent, clients_count = row
     return AgentResponse.model_validate({
         **agent.__dict__,
-        "clients_count": clients_count,
+        "clients_count": clients_count or 0,
     })
 
 
@@ -108,10 +133,7 @@ async def create_agent(
         select(Agent).where(Agent.external_id == data.external_id)
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Agent with external_id '{data.external_id}' already exists"
-        )
+        raise DuplicateExternalIdException("Agent", data.external_id)
 
     agent = Agent(**data.model_dump())
     db.add(agent)
@@ -133,7 +155,7 @@ async def update_agent(
     agent = result.scalar_one_or_none()
 
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise AgentNotFoundException(str(agent_id))
 
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -142,13 +164,13 @@ async def update_agent(
     await db.commit()
     await db.refresh(agent)
 
-    # Get client count
+    # Get client count (single additional query is acceptable for single item)
     client_count_query = select(func.count()).where(Client.agent_id == agent.id)
     clients_count = await db.scalar(client_count_query)
 
     return AgentResponse.model_validate({
         **agent.__dict__,
-        "clients_count": clients_count,
+        "clients_count": clients_count or 0,
     })
 
 
@@ -163,7 +185,7 @@ async def delete_agent(
     agent = result.scalar_one_or_none()
 
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise AgentNotFoundException(str(agent_id))
 
     await db.delete(agent)
     await db.commit()

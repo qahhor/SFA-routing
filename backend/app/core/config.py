@@ -46,10 +46,21 @@ class Settings(BaseSettings):
     VROOM_URL: str = "http://localhost:3000"
 
     # Security
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    SECRET_KEY: str = ""  # REQUIRED: Must be set in environment
+    WEBHOOK_SECRET_KEY: str = ""  # For HMAC webhook signatures
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 days
     ALGORITHM: str = "HS256"
+
+    def validate_production_settings(self) -> None:
+        """Validate critical settings for production environment."""
+        if self.ENVIRONMENT == "production":
+            if not self.SECRET_KEY or self.SECRET_KEY == "":
+                raise ValueError("SECRET_KEY must be set in production")
+            if len(self.SECRET_KEY) < 32:
+                raise ValueError("SECRET_KEY must be at least 32 characters")
+            if not self.WEBHOOK_SECRET_KEY:
+                raise ValueError("WEBHOOK_SECRET_KEY must be set in production")
 
     # API Rate Limiting
     RATE_LIMIT_ENABLED: bool = True

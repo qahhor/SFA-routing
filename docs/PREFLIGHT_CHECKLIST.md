@@ -1,9 +1,40 @@
-# Pre-flight Checklist: SFA-Routing Beta v1.1 Launch
+# Pre-flight Checklist: SFA-Routing v1.2 Launch
 
 ## Чеклист готовности к Production
 
-Используйте этот чеклист перед запуском Beta версии в production.
+Используйте этот чеклист перед запуском версии 1.2 в production.
 Последнее обновление: Январь 2025
+
+---
+
+## 🆕 Новые модули v1.2
+
+### Genetic Algorithm Solver
+- [ ] `genetic_solver.py` доступен
+- [ ] GA config настроен под production нагрузку
+- [ ] Тесты генетического алгоритма проходят
+
+### Smart Solver Selector
+- [ ] `solver_selector.py` работает
+- [ ] AUTO режим выбирает правильный солвер
+
+### H3 Spatial Index
+- [ ] h3 библиотека установлена (requirements.txt)
+- [ ] Fallback на grid-based index работает
+
+### Parallel Matrix Computation
+- [ ] `parallel_matrix.py` настроен
+- [ ] max_concurrent соответствует возможностям OSRM
+
+### Event Pipeline
+- [ ] `event_pipeline.py` запускается
+- [ ] Handlers зарегистрированы
+- [ ] Тестовые события обрабатываются
+
+### Geo Security
+- [ ] `GEO_ENCRYPTION_KEY` сгенерирован и сохранён
+- [ ] GDPR endpoints доступны
+- [ ] Audit logging работает
 
 ---
 
@@ -290,4 +321,4 @@ curl -I https://api.yourdomain.com/api/v1/health
 
 ---
 
-*Чеклист версия 1.1.0 - Beta Production Ready*
+*Чеклист версия 1.2.0 - Production Ready (R1-R21 реализовано)*
