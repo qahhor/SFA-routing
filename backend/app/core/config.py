@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # Application
     APP_NAME: str = "Route Optimization Service"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "1.2.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "development"  # development, staging, production
 
