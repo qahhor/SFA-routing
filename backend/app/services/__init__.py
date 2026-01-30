@@ -2,78 +2,254 @@
 Services module.
 
 Provides business logic for route optimization:
-- OSRM client for distance matrices
-- VROOM solver for VRP
-- OR-Tools solver for complex routing
-- Greedy solver as fallback
-- Weekly planner for SFA
-- Route optimizer for delivery
-- PDF export
+- Solvers: VROOM, OR-Tools, Genetic, Greedy, SmartSelector
+- Routing: OSRM client, route optimizer, clustering
+- Planning: Weekly planner, rerouting, predictive rerouting
+- Caching: Cache warmer, parallel matrix computation
+- Realtime: Event pipeline, WebSocket, spatial index
+- Security: Encryption, anonymization, GDPR compliance
+- Analytics: Service time, skill matching, ETA calibration
 """
-from app.services.osrm_client import OSRMClient, osrm_client
-from app.services.vroom_solver import VROOMSolver, vroom_solver
-from app.services.weekly_planner import WeeklyPlanner
-from app.services.route_optimizer import RouteOptimizer, route_optimizer
-from app.services.pdf_export import PDFExporter, pdf_exporter
 
-# Import solver interface and implementations
-from app.services.solver_interface import (
+# ============================================================
+# Solvers sub-package
+# ============================================================
+from app.services.solvers import (
+    # Base classes
     RouteSolver,
     SolverFactory,
     SolverType,
     RoutingProblem,
+    Job,
+    VehicleConfig,
+    Location,
     SolutionResult,
     Route,
     RouteStep,
-    Location,
-    VehicleConfig,
-    Job,
     # FMCG-specific
     ClientCategory,
     VisitPurpose,
     RegionalConfig,
     RegionalConstraints,
+    # Selector
+    SmartSolverSelector,
+    ProblemFeatures,
+    solver_selector,
+    # Solvers
+    VROOMSolver,
+    vroom_solver,
+    ORToolsSolver,
+    GeneticSolver,
+    GAConfig,
+    GreedySolver,
 )
 
-# Import and register solver implementations
-# These must be imported to trigger the @SolverFactory.register decorators
-from app.services.greedy_solver import GreedySolver
+# ============================================================
+# Routing sub-package
+# ============================================================
+from app.services.routing import (
+    OSRMClient,
+    osrm_client,
+    RouteOptimizer,
+    route_optimizer,
+    Clusterer,
+    DistanceBasedClusterer,
+    distance_clusterer,
+)
 
-# OR-Tools is optional
-try:
-    from app.services.ortools_solver import ORToolsSolver
-except ImportError:
-    ORToolsSolver = None  # type: ignore
+# ============================================================
+# Planning sub-package
+# ============================================================
+from app.services.planning import (
+    WeeklyPlanner,
+    weekly_planner,
+    ReroutingService,
+    rerouting_service,
+    PredictiveReroutingEngine,
+    predictive_engine,
+    ScheduleFeasibilityCheck,
+)
+
+# ============================================================
+# Caching sub-package
+# ============================================================
+from app.services.caching import (
+    CacheWarmer,
+    WarmingStrategy,
+    ParallelMatrixComputer,
+    MatrixCache,
+    CachedParallelMatrixComputer,
+)
+
+# ============================================================
+# Realtime sub-package
+# ============================================================
+from app.services.realtime import (
+    # Event pipeline
+    EventPipeline,
+    EventType,
+    EventPriority,
+    BaseEvent,
+    GPSEvent,
+    TrafficEvent,
+    OrderEvent,
+    VisitEvent,
+    EventHandler,
+    GPSUpdateHandler,
+    TrafficAlertHandler,
+    OrderCancelHandler,
+    VisitCompleteHandler,
+    # WebSocket
+    WebSocketManager,
+    ws_manager,
+    # Spatial
+    SpatialEntity,
+    H3SpatialIndex,
+    FallbackSpatialIndex,
+    create_spatial_index,
+)
+
+# ============================================================
+# Security sub-package
+# ============================================================
+from app.services.security import (
+    CoordinateEncryptor,
+    AnonymizationLevel,
+    AnonymizedLocation,
+    LocationAnonymizer,
+    GeoAccessAction,
+    GeoAccessLog,
+    GeoAuditLogger,
+    GDPRExportResult,
+    GDPRDeletionResult,
+    GDPRComplianceService,
+    create_security_services,
+)
+
+# ============================================================
+# Root-level services
+# ============================================================
+from app.services.pdf_export import PDFExporter, pdf_exporter
+from app.services.webhook_service import WebhookService, webhook_service
+
+# Analytics (many classes, import selectively)
+from app.services.analytics import (
+    ServiceTimeCalculator,
+    AgentSkills,
+    SkillBasedAssignment,
+    ClientVisitFeatures,
+    PredictiveVisitFrequency,
+    TrafficProfile,
+    TrafficAwareETA,
+    ETACalibrationData,
+    ETACalibrationService,
+    SmartPriorityRefresh,
+    VisitOutcome,
+    VisitFeedback,
+    VisitFeedbackProcessor,
+    ClientSatisfactionInputs,
+    CustomerSatisfactionScore,
+)
 
 __all__ = [
-    # Clients
-    "OSRMClient",
-    "osrm_client",
-    "VROOMSolver",
-    "vroom_solver",
-    # Services
-    "WeeklyPlanner",
-    "RouteOptimizer",
-    "route_optimizer",
-    "PDFExporter",
-    "pdf_exporter",
-    # Solver interface
+    # ========== Solvers ==========
     "RouteSolver",
     "SolverFactory",
     "SolverType",
     "RoutingProblem",
+    "Job",
+    "VehicleConfig",
+    "Location",
     "SolutionResult",
     "Route",
     "RouteStep",
-    "Location",
-    "VehicleConfig",
-    "Job",
-    # FMCG-specific
     "ClientCategory",
     "VisitPurpose",
     "RegionalConfig",
     "RegionalConstraints",
-    # Solver implementations
-    "GreedySolver",
+    "SmartSolverSelector",
+    "ProblemFeatures",
+    "solver_selector",
+    "VROOMSolver",
+    "vroom_solver",
     "ORToolsSolver",
+    "GeneticSolver",
+    "GAConfig",
+    "GreedySolver",
+    # ========== Routing ==========
+    "OSRMClient",
+    "osrm_client",
+    "RouteOptimizer",
+    "route_optimizer",
+    "Clusterer",
+    "DistanceBasedClusterer",
+    "distance_clusterer",
+    # ========== Planning ==========
+    "WeeklyPlanner",
+    "weekly_planner",
+    "ReroutingService",
+    "rerouting_service",
+    "PredictiveReroutingEngine",
+    "predictive_engine",
+    "ScheduleFeasibilityCheck",
+    # ========== Caching ==========
+    "CacheWarmer",
+    "WarmingStrategy",
+    "ParallelMatrixComputer",
+    "MatrixCache",
+    "CachedParallelMatrixComputer",
+    # ========== Realtime ==========
+    "EventPipeline",
+    "EventType",
+    "EventPriority",
+    "BaseEvent",
+    "GPSEvent",
+    "TrafficEvent",
+    "OrderEvent",
+    "VisitEvent",
+    "EventHandler",
+    "GPSUpdateHandler",
+    "TrafficAlertHandler",
+    "OrderCancelHandler",
+    "VisitCompleteHandler",
+    "WebSocketManager",
+    "ws_manager",
+    "SpatialEntity",
+    "H3SpatialIndex",
+    "FallbackSpatialIndex",
+    "create_spatial_index",
+    # ========== Security ==========
+    "CoordinateEncryptor",
+    "AnonymizationLevel",
+    "AnonymizedLocation",
+    "LocationAnonymizer",
+    "GeoAccessAction",
+    "GeoAccessLog",
+    "GeoAuditLogger",
+    "GDPRExportResult",
+    "GDPRDeletionResult",
+    "GDPRComplianceService",
+    "create_security_services",
+    # ========== PDF Export ==========
+    "PDFExporter",
+    "pdf_exporter",
+    # ========== Webhooks ==========
+    "WebhookService",
+    "webhook_service",
+    # ========== Analytics ==========
+    "ServiceTimeCalculator",
+    "AgentSkills",
+    "SkillBasedAssignment",
+    "ClientVisitFeatures",
+    "PredictiveVisitFrequency",
+    "TrafficProfile",
+    "TrafficAwareETA",
+    "ETACalibrationData",
+    "ETACalibrationService",
+    "SmartPriorityRefresh",
+    "VisitOutcome",
+    "VisitFeedback",
+    "VisitFeedbackProcessor",
+    "ClientSatisfactionInputs",
+    "CustomerSatisfactionScore",
 ]
