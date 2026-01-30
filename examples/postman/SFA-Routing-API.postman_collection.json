@@ -1,0 +1,430 @@
+{
+  "info": {
+    "name": "SFA-Routing API v1.2",
+    "description": "Route Optimization Service - полная коллекция API для тестирования.\n\n## Быстрый старт\n1. Импортируйте коллекцию в Postman\n2. Настройте переменные окружения (base_url, token)\n3. Выполните запрос Login для получения токена\n4. Тестируйте endpoints\n\n## Основные сценарии\n- **Auth**: Регистрация, логин, refresh токена\n- **Planning**: Недельное планирование агентов\n- **Delivery**: Оптимизация маршрутов доставки\n- **Real-time**: WebSocket GPS трекинг",
+    "version": "1.2.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://localhost:8000", "type": "string"},
+    {"key": "api_prefix", "value": "/api/v1", "type": "string"},
+    {"key": "access_token", "value": "", "type": "string"},
+    {"key": "refresh_token", "value": "", "type": "string"},
+    {"key": "agent_id", "value": "", "type": "string"},
+    {"key": "client_id", "value": "", "type": "string"},
+    {"key": "vehicle_id", "value": "", "type": "string"},
+    {"key": "order_id", "value": "", "type": "string"},
+    {"key": "route_id", "value": "", "type": "string"}
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/health", "host": ["{{base_url}}{{api_prefix}}"], "path": ["health"]}
+          }
+        },
+        {
+          "name": "Health Detailed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/health/detailed", "host": ["{{base_url}}{{api_prefix}}"], "path": ["health", "detailed"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"dispatcher1\",\n  \"email\": \"dispatcher1@example.com\",\n  \"password\": \"SecurePass123!\",\n  \"role\": \"dispatcher\"\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/auth/register", "host": ["{{base_url}}{{api_prefix}}"], "path": ["auth", "register"]}
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "    pm.collectionVariables.set('refresh_token', jsonData.refresh_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {"key": "username", "value": "dispatcher1", "type": "text"},
+                {"key": "password", "value": "SecurePass123!", "type": "text"}
+              ]
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/auth/login", "host": ["{{base_url}}{{api_prefix}}"], "path": ["auth", "login"]}
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/auth/refresh", "host": ["{{base_url}}{{api_prefix}}"], "path": ["auth", "refresh"]}
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/auth/me", "host": ["{{base_url}}{{api_prefix}}"], "path": ["auth", "me"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "List Agents",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/agents?skip=0&limit=20", "host": ["{{base_url}}{{api_prefix}}"], "path": ["agents"], "query": [{"key": "skip", "value": "0"}, {"key": "limit", "value": "20"}]}
+          }
+        },
+        {
+          "name": "Create Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["var jsonData = pm.response.json();", "if (jsonData.id) { pm.collectionVariables.set('agent_id', jsonData.id); }"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"AGT-001\",\n  \"name\": \"Алишер Каримов\",\n  \"phone\": \"+998901234567\",\n  \"email\": \"alisher@example.com\",\n  \"start_latitude\": 41.311081,\n  \"start_longitude\": 69.279737,\n  \"work_start\": \"09:00\",\n  \"work_end\": \"18:00\",\n  \"max_visits_per_day\": 15\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/agents", "host": ["{{base_url}}{{api_prefix}}"], "path": ["agents"]}
+          }
+        },
+        {
+          "name": "Get Agent",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/agents/{{agent_id}}", "host": ["{{base_url}}{{api_prefix}}"], "path": ["agents", "{{agent_id}}"]}
+          }
+        },
+        {
+          "name": "Update Agent Location",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_latitude\": 41.315,\n  \"current_longitude\": 69.285\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/agents/{{agent_id}}/location", "host": ["{{base_url}}{{api_prefix}}"], "path": ["agents", "{{agent_id}}", "location"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Clients",
+      "item": [
+        {
+          "name": "List Clients",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/clients?skip=0&limit=50", "host": ["{{base_url}}{{api_prefix}}"], "path": ["clients"], "query": [{"key": "skip", "value": "0"}, {"key": "limit", "value": "50"}]}
+          }
+        },
+        {
+          "name": "Create Client",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["var jsonData = pm.response.json();", "if (jsonData.id) { pm.collectionVariables.set('client_id', jsonData.id); }"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"CLT-001\",\n  \"name\": \"Супермаркет Макро\",\n  \"address\": \"ул. Навои 100, Ташкент\",\n  \"contact_person\": \"Рустам Ахмедов\",\n  \"phone\": \"+998901112233\",\n  \"latitude\": 41.328,\n  \"longitude\": 69.255,\n  \"category\": \"A\",\n  \"visit_duration_minutes\": 25,\n  \"time_window_start\": \"09:00\",\n  \"time_window_end\": \"18:00\",\n  \"agent_id\": \"{{agent_id}}\"\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/clients", "host": ["{{base_url}}{{api_prefix}}"], "path": ["clients"]}
+          }
+        },
+        {
+          "name": "Get Client",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/clients/{{client_id}}", "host": ["{{base_url}}{{api_prefix}}"], "path": ["clients", "{{client_id}}"]}
+          }
+        },
+        {
+          "name": "Filter Clients by Category",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/clients?category=A", "host": ["{{base_url}}{{api_prefix}}"], "path": ["clients"], "query": [{"key": "category", "value": "A"}]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vehicles",
+      "item": [
+        {
+          "name": "List Vehicles",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/vehicles", "host": ["{{base_url}}{{api_prefix}}"], "path": ["vehicles"]}
+          }
+        },
+        {
+          "name": "Create Vehicle",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["var jsonData = pm.response.json();", "if (jsonData.id) { pm.collectionVariables.set('vehicle_id', jsonData.id); }"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Газель NN-001\",\n  \"license_plate\": \"01A001AA\",\n  \"capacity_kg\": 1500,\n  \"capacity_volume_m3\": 12,\n  \"start_latitude\": 41.311081,\n  \"start_longitude\": 69.279737,\n  \"work_start\": \"08:00\",\n  \"work_end\": \"20:00\",\n  \"is_refrigerated\": false,\n  \"driver_name\": \"Бахром Юсупов\",\n  \"driver_phone\": \"+998901234568\"\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/vehicles", "host": ["{{base_url}}{{api_prefix}}"], "path": ["vehicles"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Planning (SFA)",
+      "item": [
+        {
+          "name": "Generate Weekly Plan",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"week_start_date\": \"2024-02-05\",\n  \"include_high_priority\": true,\n  \"respect_categories\": true\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/planning/weekly", "host": ["{{base_url}}{{api_prefix}}"], "path": ["planning", "weekly"]}
+          }
+        },
+        {
+          "name": "Get Agent Weekly Plan",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/planning/agent/{{agent_id}}/week/2024-02-05", "host": ["{{base_url}}{{api_prefix}}"], "path": ["planning", "agent", "{{agent_id}}", "week", "2024-02-05"]}
+          }
+        },
+        {
+          "name": "Get Daily Plan",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/planning/agent/{{agent_id}}/day/2024-02-05", "host": ["{{base_url}}{{api_prefix}}"], "path": ["planning", "agent", "{{agent_id}}", "day", "2024-02-05"]}
+          }
+        },
+        {
+          "name": "Update Visit Status",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"completed\",\n  \"actual_time\": \"10:45\",\n  \"actual_duration_minutes\": 20,\n  \"notes\": \"Успешный визит, заказ размещён\"\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/planning/visits/{{visit_id}}", "host": ["{{base_url}}{{api_prefix}}"], "path": ["planning", "visits", "{{visit_id}}"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delivery",
+      "item": [
+        {
+          "name": "Create Delivery Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["var jsonData = pm.response.json();", "if (jsonData.id) { pm.collectionVariables.set('order_id', jsonData.id); }"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"ORD-2024-001\",\n  \"client_id\": \"{{client_id}}\",\n  \"weight_kg\": 150,\n  \"volume_m3\": 1.2,\n  \"time_window_start\": \"2024-02-05T09:00:00\",\n  \"time_window_end\": \"2024-02-05T12:00:00\",\n  \"priority\": 8\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/delivery/orders", "host": ["{{base_url}}{{api_prefix}}"], "path": ["delivery", "orders"]}
+          }
+        },
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/delivery/orders?status=pending", "host": ["{{base_url}}{{api_prefix}}"], "path": ["delivery", "orders"], "query": [{"key": "status", "value": "pending"}]}
+          }
+        },
+        {
+          "name": "Optimize Routes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["var jsonData = pm.response.json();", "if (jsonData.routes && jsonData.routes[0]) { pm.collectionVariables.set('route_id', jsonData.routes[0].id); }"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}, {"key": "Idempotency-Key", "value": "{{$guid}}"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_ids\": [\"{{order_id}}\"],\n  \"vehicle_ids\": [\"{{vehicle_id}}\"],\n  \"date\": \"2024-02-05\",\n  \"solver\": \"auto\",\n  \"options\": {\n    \"minimize_vehicles\": true,\n    \"respect_time_windows\": true\n  }\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/delivery/optimize", "host": ["{{base_url}}{{api_prefix}}"], "path": ["delivery", "optimize"]}
+          }
+        },
+        {
+          "name": "Get Route Details",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/delivery/routes/{{route_id}}", "host": ["{{base_url}}{{api_prefix}}"], "path": ["delivery", "routes", "{{route_id}}"]}
+          }
+        },
+        {
+          "name": "Reoptimize Route",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"order_cancelled\",\n  \"excluded_order_ids\": []\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/delivery/routes/{{route_id}}/reoptimize", "host": ["{{base_url}}{{api_prefix}}"], "path": ["delivery", "routes", "{{route_id}}", "reoptimize"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bulk Import",
+      "item": [
+        {
+          "name": "Bulk Import Orders",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}, {"key": "Idempotency-Key", "value": "bulk-{{$timestamp}}"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orders\": [\n    {\n      \"external_id\": \"ORD-BULK-001\",\n      \"client_external_id\": \"CLT-001\",\n      \"weight_kg\": 100,\n      \"volume_m3\": 0.8,\n      \"time_window_start\": \"2024-02-05T09:00:00\",\n      \"time_window_end\": \"2024-02-05T12:00:00\",\n      \"priority\": 5\n    },\n    {\n      \"external_id\": \"ORD-BULK-002\",\n      \"client_external_id\": \"CLT-002\",\n      \"weight_kg\": 200,\n      \"volume_m3\": 1.5,\n      \"time_window_start\": \"2024-02-05T14:00:00\",\n      \"time_window_end\": \"2024-02-05T18:00:00\",\n      \"priority\": 3\n    }\n  ]\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/bulk/orders", "host": ["{{base_url}}{{api_prefix}}"], "path": ["bulk", "orders"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Subscribe to Events",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://your-erp.example.com/webhooks/sfa\",\n  \"events\": [\"optimization.completed\", \"route.updated\", \"visit.completed\"],\n  \"secret\": \"your-webhook-secret\"\n}"
+            },
+            "url": {"raw": "{{base_url}}{{api_prefix}}/webhooks/subscribe", "host": ["{{base_url}}{{api_prefix}}"], "path": ["webhooks", "subscribe"]}
+          }
+        },
+        {
+          "name": "List Subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/webhooks", "host": ["{{base_url}}{{api_prefix}}"], "path": ["webhooks"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Export",
+      "item": [
+        {
+          "name": "Export Daily Plan PDF",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/export/daily-plan/{{agent_id}}/2024-02-05", "host": ["{{base_url}}{{api_prefix}}"], "path": ["export", "daily-plan", "{{agent_id}}", "2024-02-05"]}
+          }
+        },
+        {
+          "name": "Export Route Sheet PDF",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}{{api_prefix}}/export/route/{{route_id}}", "host": ["{{base_url}}{{api_prefix}}"], "path": ["export", "route", "{{route_id}}"]}
+          }
+        }
+      ]
+    }
+  ]
+}
