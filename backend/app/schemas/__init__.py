@@ -31,6 +31,25 @@ from app.schemas.delivery import (
     DeliveryRouteResponse,
     DeliveryRouteStopResponse,
 )
+from app.schemas.field_routing import (
+    ErrorCode,
+    Profile,
+    TSPAutoResponse,
+    TSPData,
+    TSPKind,
+    TSPLocation,
+    TSPRequest,
+    TSPSingleResponse,
+    VehicleType,
+    VisitIntensity,
+    VRPCDepot,
+    VRPCLoop,
+    VRPCPoint,
+    VRPCRequest,
+    VRPCResponse,
+    VRPCUrls,
+    VRPCVehicle,
+)
 from app.schemas.planning import (
     DailyPlanResponse,
     VisitPlanResponse,
@@ -43,13 +62,6 @@ from app.schemas.vehicle import (
     VehicleListResponse,
     VehicleResponse,
     VehicleUpdate,
-)
-from app.schemas.field_routing import (
-    FieldRoutingRequest,
-    FieldRoutingResponse,
-    RoutingMode,
-    ScheduledVisit,
-    VisitPoint,
 )
 
 __all__ = [
@@ -94,10 +106,24 @@ __all__ = [
     "LoginResponse",
     "RegisterRequest",
     "RegisterResponse",
-    # Field Routing
-    "FieldRoutingRequest",
-    "FieldRoutingResponse",
-    "RoutingMode",
-    "ScheduledVisit",
-    "VisitPoint",
+    # TSP (Traveling Salesperson Problem)
+    "TSPKind",
+    "VisitIntensity",
+    "Profile",
+    "TSPLocation",
+    "TSPData",
+    "TSPRequest",
+    "TSPAutoResponse",
+    "TSPSingleResponse",
+    # VRPC (Vehicle Routing Problem with Capacity)
+    "VehicleType",
+    "VRPCDepot",
+    "VRPCPoint",
+    "VRPCVehicle",
+    "VRPCUrls",
+    "VRPCRequest",
+    "VRPCLoop",
+    "VRPCResponse",
+    # Error Codes
+    "ErrorCode",
 ]

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
-from app.api.routes import api_router
+from app.api.routes import api_router, vrpc_router
 from app.core.config import settings
 from app.core.database import close_db, init_db
 from app.core.exceptions import register_exception_handlers
@@ -135,8 +135,11 @@ def create_app() -> FastAPI:
     # Idempotency middleware
     app.add_middleware(IdempotencyMiddleware)
 
-    # Include API router
+    # Include API router (TSP at /api/v1)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+    # Include VRPC router at /vrpc (root level per spec)
+    app.include_router(vrpc_router)
 
     # Metrics endpoint (outside API prefix)
     if settings.METRICS_ENABLED:
