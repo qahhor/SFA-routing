@@ -1,194 +1,258 @@
 """
-Field Team Routing API Endpoints.
+Routing API Endpoints.
 
-API для маршрутизации полевых команд с планированием на несколько дней.
+TSP - Traveling Salesperson Problem
+VRPC - Vehicle Routing Problem with Capacity Constraints
+
+Based on Google OR-Tools routing services.
 """
 
 import logging
-from datetime import date
-from typing import Optional
+from typing import Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from fastapi import APIRouter, status
 
-from app.core.rate_limit import limiter
-from app.schemas.field_routing import FieldRoutingRequest, FieldRoutingResponse
-from app.services.planning.field_routing import FieldRoutingService, field_routing_service
+from app.schemas.field_routing import (
+    TSPAutoResponse,
+    TSPRequest,
+    TSPSingleResponse,
+    VRPCRequest,
+    VRPCResponse,
+)
+from app.services.planning.field_routing import tsp_service, vrpc_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/field-routing", tags=["Field Routing"])
+# TSP Router - mounted at /api/v1
+tsp_router = APIRouter(tags=["TSP - Traveling Salesperson Problem"])
+
+# VRPC Router - mounted at /vrpc
+vrpc_router = APIRouter(prefix="/vrpc", tags=["VRPC - Vehicle Routing Problem"])
 
 
-class FieldRoutingError(BaseModel):
-    """Модель ошибки."""
-
-    detail: str
-    error_code: Optional[str] = None
+# ============================================================
+# TSP Endpoints
+# ============================================================
 
 
-def get_field_routing_service() -> FieldRoutingService:
-    """Dependency injection для сервиса маршрутизации."""
-    return field_routing_service
-
-
-@router.post(
-    "/plan",
-    response_model=FieldRoutingResponse,
+@tsp_router.post(
+    "",
+    response_model=Union[TSPAutoResponse, TSPSingleResponse],
     status_code=status.HTTP_200_OK,
-    summary="Планирование маршрута полевой команды",
+    summary="Solve Traveling Salesperson Problem",
     description="""
-    Планирует оптимальный маршрут для полевой команды на указанное количество рабочих дней.
+    Generates route for a salesperson who must visit a number of points
+    each day for four weeks.
 
-    ## Возможности
+    ## Kinds
 
-    - **Многодневное планирование**: Распределение визитов на несколько рабочих дней
-    - **Учёт приоритетов**: Визиты с высоким приоритетом планируются первыми
-    - **Временные окна**: Учёт времени доступности клиентов
-    - **Режимы передвижения**: Поддержка автомобиля и пешей навигации
-    - **Автоматический выбор солвера**: VROOM для малых задач, OR-Tools/Genetic для больших
+    - **auto**: Generate multiple optimal plans
+    - **single**: Generate one optimal plan
+    - **manual**: Not implemented
 
-    ## Алгоритм
+    ## Visit Intensities
 
-    1. Точки сортируются по приоритету (1 = наивысший)
-    2. Для каждого дня создаётся оптимальный маршрут
-    3. Учитываются ограничения: max_visits_per_day, working_hours
-    4. Возвращается детализированное расписание с временами прибытия
+    - `THREE_TIMES_A_WEEK` - 3 visits per week (12 total in 4 weeks)
+    - `TWICE_A_WEEK` - 2 visits per week (8 total)
+    - `ONCE_A_WEEK` - 1 visit per week (4 total)
+    - `TWICE_A_MONTH` - 2 visits per month
+    - `ONCE_A_MONTH` - 1 visit per month
 
-    ## Лимиты
+    ## Response Codes
 
-    - Максимум 1000 точек визита за один запрос
-    - Максимум 14 рабочих дней для планирования
-    - Максимум 50 визитов в день
+    - **100**: Success
+    - **101**: Invalid input format
+    - **104**: OSRM connection error
+    - **105**: OSRM matrix error
+    - **108**: Time limit reached
+    - **109**: No solution found
+    - **110**: Unexpected error
+    - **111**: Out of memory
     """,
     responses={
         200: {
-            "description": "Маршрут успешно спланирован",
-            "model": FieldRoutingResponse,
-        },
-        400: {
-            "description": "Некорректные входные данные",
-            "model": FieldRoutingError,
-        },
-        422: {
-            "description": "Ошибка валидации",
-        },
-        500: {
-            "description": "Внутренняя ошибка сервера",
-            "model": FieldRoutingError,
+            "description": "TSP solution",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "auto_success": {
+                            "summary": "Auto mode success",
+                            "value": {
+                                "code": 100,
+                                "plans": [
+                                    [
+                                        [[2, 5, 4], [1, 7, 3, 6]],
+                                        [[2, 5, 4], [1, 7, 3, 6]],
+                                    ]
+                                ],
+                            },
+                        },
+                        "single_success": {
+                            "summary": "Single mode success",
+                            "value": {
+                                "code": 100,
+                                "routes": [
+                                    [[2, 5, 4], [1, 7, 3, 6]],
+                                    [[2, 5, 4], [1, 7, 3, 6]],
+                                ],
+                                "ignored_locations": [8, 9],
+                            },
+                        },
+                        "error": {
+                            "summary": "Error response",
+                            "value": {
+                                "code": 109,
+                                "error_text": "No solution found to the problem",
+                            },
+                        },
+                    }
+                }
+            },
         },
     },
 )
-@limiter.limit("30/minute")
-async def plan_field_route(
-    request: FieldRoutingRequest,
-    start_date: Optional[date] = Query(
-        default=None,
-        description="Дата начала планирования (по умолчанию завтра)",
-        examples=["2024-02-05"],
-    ),
-    service: FieldRoutingService = Depends(get_field_routing_service),
-) -> FieldRoutingResponse:
+async def solve_tsp(
+    request: TSPRequest,
+) -> Union[TSPAutoResponse, TSPSingleResponse]:
     """
-    Планирует маршрут для полевой команды.
+    Solve Traveling Salesperson Problem.
 
-    Принимает список точек визита с параметрами и возвращает
-    оптимизированный маршрут на указанное количество дней.
+    The service calculates the route based on the time to travel between
+    points and the time spent at each point. Returns the route with
+    minimum time spent on the road.
+
+    Constraints:
+    - Maximum number of points in daily route
+    - Working hours per day in seconds
+    - Visit duration at each point
+    - Intensity of visits at each point
     """
-    try:
-        logger.info(
-            f"Field routing request: {len(request.visits)} visits, "
-            f"{request.working_days} days, mode={request.routing_mode}"
-        )
+    logger.info(
+        f"TSP request: kind={request.kind.value}, "
+        f"locations={len(request.data.locations)}, "
+        f"profile={request.data.profile.value}"
+    )
 
-        response = await service.plan_route(
-            request=request,
-            plan_start_date=start_date,
-        )
+    response = await tsp_service.solve(request)
 
-        logger.info(
-            f"Field routing completed: {response.total_visits} visits scheduled, "
-            f"{len(response.unassigned_visits)} unassigned, "
-            f"solver={response.solver_used}, time={response.computation_time_ms}ms"
-        )
+    logger.info(f"TSP response: code={response.code}")
 
-        return response
-
-    except ValueError as e:
-        logger.warning(f"Field routing validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
-    except Exception as e:
-        logger.error(f"Field routing error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при планировании маршрута. Попробуйте позже.",
-        )
+    return response
 
 
-@router.post(
-    "/validate",
+# ============================================================
+# VRPC Endpoints
+# ============================================================
+
+
+@vrpc_router.post(
+    "",
+    response_model=VRPCResponse,
     status_code=status.HTTP_200_OK,
-    summary="Валидация входных данных",
-    description="Проверяет корректность входных данных без выполнения планирования.",
-)
-async def validate_field_routing_request(
-    request: FieldRoutingRequest,
-) -> dict:
-    """
-    Валидирует входные данные для планирования маршрута.
+    summary="Solve Vehicle Routing Problem with Capacity Constraints",
+    description="""
+    Solves vehicle routing problem where multiple vehicles with
+    capacity constraints must visit delivery points starting and
+    ending at a depot.
 
-    Проверяет:
-    - Корректность координат
-    - Непротиворечивость временных окон
-    - Уникальность ID точек
-    - Достаточность дней для всех визитов
-    """
-    errors = []
-    warnings = []
+    ## Features
 
-    # Проверка уникальности ID
-    visit_ids = [v.id for v in request.visits]
-    if len(visit_ids) != len(set(visit_ids)):
-        duplicates = [id for id in visit_ids if visit_ids.count(id) > 1]
-        errors.append(f"Дублирующиеся ID точек: {set(duplicates)}")
+    - Multiple vehicles with different types and capacities
+    - Vehicle types: car, truck, walking, cycling
+    - Depot as start/end location
+    - Maximum cycle distance constraint
+    - Global span coefficient for balancing distance vs time
 
-    # Проверка достаточности дней
-    max_possible_visits = request.working_days * request.max_visits_per_day
-    if len(request.visits) > max_possible_visits:
-        warnings.append(
-            f"Запрошено {len(request.visits)} визитов, но максимум возможно "
-            f"{max_possible_visits} ({request.working_days} дней × {request.max_visits_per_day} визитов/день)"
-        )
+    ## Response Codes
 
-    # Проверка временных окон
-    for visit in request.visits:
-        if visit.available_hours.start >= visit.available_hours.end:
-            errors.append(f"Точка {visit.id}: время начала >= времени окончания доступности")
-
-        # Проверка пересечения с рабочими часами
-        if visit.available_hours.start > request.working_hours.end:
-            errors.append(
-                f"Точка {visit.id}: время доступности ({visit.available_hours.start}) "
-                f"позже окончания рабочего дня ({request.working_hours.end})"
-            )
-        if visit.available_hours.end < request.working_hours.start:
-            errors.append(
-                f"Точка {visit.id}: время доступности заканчивается ({visit.available_hours.end}) "
-                f"до начала рабочего дня ({request.working_hours.start})"
-            )
-
-    return {
-        "valid": len(errors) == 0,
-        "errors": errors,
-        "warnings": warnings,
-        "summary": {
-            "total_visits": len(request.visits),
-            "working_days": request.working_days,
-            "max_visits_per_day": request.max_visits_per_day,
-            "max_possible_visits": max_possible_visits,
-            "routing_mode": request.routing_mode,
+    - **100**: Success
+    - **101**: Invalid input format
+    - **102**: Unsupported vehicle type
+    - **103**: URL not found for vehicle type
+    - **104**: OSRM connection error
+    - **105**: OSRM matrix error
+    - **106**: Weight exceeds vehicle capacity
+    - **107**: Arc cost not set
+    - **108**: Time limit reached
+    - **109**: No solution found
+    - **110**: Unexpected error
+    - **111**: Out of memory
+    """,
+    responses={
+        200: {
+            "description": "VRPC solution",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "success": {
+                            "summary": "Success response",
+                            "value": {
+                                "code": 100,
+                                "vehicles": [
+                                    [
+                                        {
+                                            "route": [2, 5, 4],
+                                            "distance": 12423,
+                                            "duration": 52,
+                                        },
+                                        {
+                                            "route": [1, 7],
+                                            "distance": 12423,
+                                            "duration": 52,
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            "route": [3, 6],
+                                            "distance": 42423,
+                                            "duration": 184,
+                                        }
+                                    ],
+                                ],
+                                "total_distance": 56230,
+                                "total_duration": 245,
+                            },
+                        },
+                        "error": {
+                            "summary": "Error response",
+                            "value": {
+                                "code": 106,
+                                "error_text": "The weight of the load exceeds "
+                                "the carrying capacity of the vehicle.",
+                            },
+                        },
+                    }
+                }
+            },
         },
-    }
+    },
+)
+async def solve_vrpc(
+    request: VRPCRequest,
+) -> VRPCResponse:
+    """
+    Solve Vehicle Routing Problem with Capacity Constraints.
+
+    Vehicles start and end their trips at the depot. Each vehicle
+    can make multiple loops/trips. Points are assigned to vehicles
+    based on capacity and distance constraints.
+    """
+    logger.info(
+        f"VRPC request: points={len(request.points)}, "
+        f"vehicles={len(request.vehicles)}"
+    )
+
+    response = await vrpc_service.solve(request)
+
+    logger.info(
+        f"VRPC response: code={response.code}, "
+        f"total_distance={response.total_distance}"
+    )
+
+    return response
+
+
+# Combined router for backward compatibility
+router = APIRouter()
+router.include_router(tsp_router)
+router.include_router(vrpc_router)

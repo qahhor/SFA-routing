@@ -1,213 +1,255 @@
 """
-Schemas for Field Team Routing API.
+Schemas for Routing Services.
 
-API для маршрутизации полевых команд с планированием на несколько дней.
+Based on Google OR-Tools routing specification.
+TSP - Traveling Salesperson Problem
+VRPC - Vehicle Routing Problem with Capacity Constraints
 """
 
-from datetime import datetime, time
 from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class RoutingMode(str, Enum):
-    """Режим передвижения."""
+# ============================================================
+# Enums
+# ============================================================
+
+
+class TSPKind(str, Enum):
+    """Kind of TSP service."""
+
+    AUTO = "auto"
+    SINGLE = "single"
+    MANUAL = "manual"
+
+
+class VisitIntensity(str, Enum):
+    """Intensity of visits at each point."""
+
+    THREE_TIMES_A_WEEK = "THREE_TIMES_A_WEEK"
+    TWICE_A_WEEK = "TWICE_A_WEEK"
+    ONCE_A_WEEK = "ONCE_A_WEEK"
+    TWICE_A_MONTH = "TWICE_A_MONTH"
+    ONCE_A_MONTH = "ONCE_A_MONTH"
+
+
+class VehicleType(str, Enum):
+    """Type of vehicle."""
 
     CAR = "car"
+    TRUCK = "truck"
     WALKING = "walking"
+    CYCLING = "cycling"
 
 
-class WorkingHours(BaseModel):
-    """Временной диапазон рабочего дня."""
+class Profile(str, Enum):
+    """Profile for OSRM routing."""
 
-    start: time = Field(..., description="Начало рабочего дня", examples=["09:00"])
-    end: time = Field(..., description="Окончание рабочего дня", examples=["17:00"])
+    DRIVING = "driving"
+    WALKING = "walking"
+    CYCLING = "cycling"
 
-    @field_validator("end")
+
+# ============================================================
+# TSP (Traveling Salesperson Problem) Schemas
+# ============================================================
+
+
+class TSPLocation(BaseModel):
+    """Location for TSP service."""
+
+    lat: str = Field(..., description="Latitude with precision 6")
+    lng: str = Field(..., description="Longitude with precision 6")
+    visit_duration: int = Field(..., ge=0, description="Visit duration in seconds")
+    visit_intensity: VisitIntensity = Field(
+        ..., description="Intensity of visits at this point"
+    )
+
+    @field_validator("lat", "lng")
     @classmethod
-    def end_after_start(cls, v, info):
-        if "start" in info.data and v <= info.data["start"]:
-            raise ValueError("end must be after start")
+    def validate_coordinate(cls, v: str) -> str:
+        """Validate coordinate format."""
+        try:
+            float(v)
+        except ValueError:
+            raise ValueError("Coordinate must be a valid number string")
         return v
 
 
-class AvailableHours(BaseModel):
-    """Время доступности клиента."""
+class TSPData(BaseModel):
+    """Data for TSP service (auto and single kinds)."""
 
-    start: time = Field(..., description="Начало доступности", examples=["09:00"])
-    end: time = Field(..., description="Окончание доступности", examples=["18:00"])
-
-
-class Location(BaseModel):
-    """GPS-координаты точки."""
-
-    latitude: float = Field(..., ge=-90, le=90, description="Широта", examples=[41.311081])
-    longitude: float = Field(..., ge=-180, le=180, description="Долгота", examples=[69.279737])
-
-
-class VisitPoint(BaseModel):
-    """Точка визита для планирования."""
-
-    id: str = Field(..., min_length=1, description="Уникальный идентификатор точки", examples=["POINT-001"])
-    location: Location = Field(..., description="GPS-координаты точки")
-    available_hours: AvailableHours = Field(..., description="Время доступности клиента")
-    service_time: Optional[int] = Field(
-        default=15, ge=1, le=480, description="Предполагаемая длительность визита в минутах", examples=[15]
+    locations: list[TSPLocation] = Field(
+        ..., min_length=1, description="List of points to visit"
     )
-    manager_acceptance_time: Optional[int] = Field(
-        default=0, ge=0, le=120, description="Время на приемку менеджером в минутах", examples=[5]
+    map_url: str = Field(..., description="URL of OSRM server for distance matrix")
+    profile: Profile = Field(..., description="Vehicle profile for routing")
+    max_visit_limit_per_day: int = Field(
+        ..., ge=1, le=50, description="Maximum points per day"
     )
-    priority: int = Field(..., ge=1, le=10, description="Приоритет визита (1 — наивысший)", examples=[1])
-
-
-class FieldRoutingRequest(BaseModel):
-    """
-    Запрос на планирование маршрута полевой команды.
-
-    Планирует оптимальный маршрут для заданных точек визита
-    на указанное количество рабочих дней.
-    """
-
-    working_days: int = Field(
-        ..., ge=1, le=14, description="Количество рабочих дней для планирования", examples=[4]
-    )
-    working_hours: WorkingHours = Field(..., description="Временной диапазон рабочего дня")
-    max_visits_per_day: int = Field(
-        ..., ge=1, le=50, description="Максимальное количество визитов в день", examples=[12]
-    )
-    routing_mode: RoutingMode = Field(..., description="Режим передвижения: car или walking")
-    start_location: Optional[Location] = Field(
-        default=None, description="Начальная точка маршрута (депо/офис). Если не указана, начинается с первой точки"
-    )
-    visits: list[VisitPoint] = Field(
-        ..., min_length=1, max_length=1000, description="Массив точек визита для планирования"
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "working_days": 4,
-                "working_hours": {"start": "09:00", "end": "17:00"},
-                "max_visits_per_day": 12,
-                "routing_mode": "car",
-                "start_location": {"latitude": 41.311081, "longitude": 69.279737},
-                "visits": [
-                    {
-                        "id": "POINT-001",
-                        "location": {"latitude": 41.328, "longitude": 69.255},
-                        "available_hours": {"start": "09:00", "end": "18:00"},
-                        "service_time": 20,
-                        "manager_acceptance_time": 5,
-                        "priority": 1,
-                    },
-                    {
-                        "id": "POINT-002",
-                        "location": {"latitude": 41.295, "longitude": 69.220},
-                        "available_hours": {"start": "10:00", "end": "16:00"},
-                        "service_time": 15,
-                        "priority": 2,
-                    },
-                ],
-            }
-        }
-    }
-
-
-class ScheduledVisit(BaseModel):
-    """Запланированный визит в маршруте."""
-
-    visit_id: str = Field(..., description="Идентификатор точки визита")
-    day_number: int = Field(..., ge=1, description="Номер рабочего дня")
-    sequence_number: int = Field(..., ge=1, description="Порядковый номер визита в маршруте дня")
-    scheduled_start: datetime = Field(..., description="Запланированное время начала визита")
-    scheduled_end: datetime = Field(..., description="Запланированное время окончания визита")
-    distance_to_next: Optional[float] = Field(
-        default=None, ge=0, description="Расстояние до следующей точки в километрах"
-    )
-    travel_time_to_next: Optional[int] = Field(
-        default=None, ge=0, description="Время в пути до следующей точки в минутах"
+    working_seconds_per_day: int = Field(
+        ..., ge=3600, le=86400, description="Working hours in seconds"
     )
 
 
-class DailySummary(BaseModel):
-    """Статистика маршрута за день."""
+class TSPRequest(BaseModel):
+    """Request for TSP service."""
 
-    day_number: int = Field(..., description="Номер рабочего дня")
-    visits_count: int = Field(..., description="Количество визитов в этот день")
-    total_distance_km: float = Field(..., description="Общее расстояние за день в км")
-    total_duration_minutes: int = Field(..., description="Общая длительность маршрута за день в минутах")
-    start_time: time = Field(..., description="Время начала маршрута")
-    end_time: time = Field(..., description="Время окончания маршрута")
+    kind: TSPKind = Field(..., description="Kind of service: auto, single, or manual")
+    data: TSPData = Field(..., description="Data for the service")
 
 
-class UnassignedVisit(BaseModel):
-    """Нераспределённый визит."""
+class TSPAutoResponse(BaseModel):
+    """Response for TSP auto kind."""
 
-    visit_id: str = Field(..., description="Идентификатор точки визита")
-    reason: str = Field(..., description="Причина, почему визит не был распределён")
-
-
-class FieldRoutingResponse(BaseModel):
-    """
-    Ответ с оптимизированным маршрутом полевой команды.
-
-    Содержит общую статистику, детализацию по визитам
-    и информацию о нераспределённых точках.
-    """
-
-    # Общая статистика маршрута
-    total_visits: int = Field(..., description="Общее количество запланированных визитов")
-    total_distance: float = Field(..., description="Общее расстояние в километрах")
-    total_duration: int = Field(..., description="Общая длительность маршрута в минутах")
-
-    # Статистика по дням
-    days_used: int = Field(..., description="Количество использованных дней")
-    daily_summary: list[DailySummary] = Field(..., description="Статистика по каждому дню")
-
-    # Детализация по визитам
-    scheduled_visits: list[ScheduledVisit] = Field(..., description="Массив запланированных визитов")
-
-    # Нераспределённые визиты
-    unassigned_visits: list[UnassignedVisit] = Field(
-        default_factory=list, description="Визиты, которые не удалось распределить"
+    code: int = Field(..., description="Result code. 100 = success")
+    plans: Optional[list[list[list[list[int]]]]] = Field(
+        None,
+        description="List of plans. Each plan contains 4 weeks of daily routes",
+    )
+    error_text: Optional[str] = Field(
+        None, description="Error description if code != 100"
     )
 
-    # Метаданные
-    solver_used: str = Field(..., description="Использованный алгоритм оптимизации")
-    computation_time_ms: int = Field(..., description="Время вычисления в миллисекундах")
 
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "total_visits": 45,
-                "total_distance": 120.5,
-                "total_duration": 1920,
-                "days_used": 4,
-                "daily_summary": [
-                    {
-                        "day_number": 1,
-                        "visits_count": 12,
-                        "total_distance_km": 32.5,
-                        "total_duration_minutes": 480,
-                        "start_time": "09:00",
-                        "end_time": "17:00",
-                    }
-                ],
-                "scheduled_visits": [
-                    {
-                        "visit_id": "POINT-001",
-                        "day_number": 1,
-                        "sequence_number": 1,
-                        "scheduled_start": "2024-02-05T09:15:00",
-                        "scheduled_end": "2024-02-05T09:35:00",
-                        "distance_to_next": 3.2,
-                        "travel_time_to_next": 12,
-                    }
-                ],
-                "unassigned_visits": [],
-                "solver_used": "vroom",
-                "computation_time_ms": 1250,
-            }
-        }
-    }
+class TSPSingleResponse(BaseModel):
+    """Response for TSP single kind."""
+
+    code: int = Field(..., description="Result code. 100 = success")
+    routes: Optional[list[list[list[int]]]] = Field(
+        None,
+        description="Routes for 4 weeks. Each week has daily routes with location indexes",
+    )
+    ignored_locations: Optional[list[int]] = Field(
+        None, description="Indexes of locations that couldn't be scheduled"
+    )
+    error_text: Optional[str] = Field(
+        None, description="Error description if code != 100"
+    )
+
+
+# ============================================================
+# VRPC (Vehicle Routing Problem with Capacity) Schemas
+# ============================================================
+
+
+class VRPCDepot(BaseModel):
+    """Depot location for VRPC service."""
+
+    lat: str = Field(..., description="Latitude with precision 6")
+    lng: str = Field(..., description="Longitude with precision 6")
+
+    @field_validator("lat", "lng")
+    @classmethod
+    def validate_coordinate(cls, v: str) -> str:
+        """Validate coordinate format."""
+        try:
+            float(v)
+        except ValueError:
+            raise ValueError("Coordinate must be a valid number string")
+        return v
+
+
+class VRPCPoint(BaseModel):
+    """Delivery point for VRPC service."""
+
+    lat: str = Field(..., description="Latitude with precision 6")
+    lng: str = Field(..., description="Longitude with precision 6")
+    weight: float = Field(..., ge=0, description="Weight of cargo")
+
+    @field_validator("lat", "lng")
+    @classmethod
+    def validate_coordinate(cls, v: str) -> str:
+        """Validate coordinate format."""
+        try:
+            float(v)
+        except ValueError:
+            raise ValueError("Coordinate must be a valid number string")
+        return v
+
+
+class VRPCVehicle(BaseModel):
+    """Vehicle for VRPC service."""
+
+    type: VehicleType = Field(..., description="Type of vehicle")
+    capacity: float = Field(..., gt=0, description="Vehicle capacity")
+
+
+class VRPCUrls(BaseModel):
+    """OSRM URLs for different vehicle types."""
+
+    car: Optional[str] = None
+    truck: Optional[str] = None
+    walking: Optional[str] = None
+    cycling: Optional[str] = None
+
+
+class VRPCRequest(BaseModel):
+    """Request for VRPC service."""
+
+    depot: VRPCDepot = Field(..., description="Start/end location for vehicles")
+    points: list[VRPCPoint] = Field(..., min_length=1, description="Delivery points")
+    vehicles: list[VRPCVehicle] = Field(
+        ..., min_length=1, description="Available vehicles"
+    )
+    max_cycle_distance: Optional[float] = Field(
+        None, description="Maximum distance per cycle in meters"
+    )
+    global_span_coefficient: Optional[int] = Field(
+        30,
+        ge=1,
+        le=100,
+        description="Balance between min total distance and min overall time (1-100)",
+    )
+    urls: VRPCUrls = Field(..., description="OSRM URLs for vehicle types")
+
+
+class VRPCLoop(BaseModel):
+    """Single loop/trip for a vehicle."""
+
+    route: list[int] = Field(..., description="List of point indexes to visit")
+    distance: float = Field(..., description="Distance in meters")
+    duration: float = Field(..., description="Duration in seconds")
+
+
+class VRPCResponse(BaseModel):
+    """Response for VRPC service."""
+
+    code: int = Field(..., description="Result code. 100 = success")
+    vehicles: Optional[list[list[VRPCLoop]]] = Field(
+        None,
+        description="Routes per vehicle. Each vehicle may have multiple loops",
+    )
+    total_distance: Optional[float] = Field(
+        None, description="Total distance in meters"
+    )
+    total_duration: Optional[float] = Field(
+        None, description="Total duration in seconds"
+    )
+    error_text: Optional[str] = Field(
+        None, description="Error description if code != 100"
+    )
+
+
+# ============================================================
+# Error Codes
+# ============================================================
+
+
+class ErrorCode:
+    """Error code definitions."""
+
+    SUCCESS = 100
+    INVALID_INPUT_FORMAT = 101
+    UNSUPPORTED_VEHICLE_TYPE = 102
+    URL_NOT_FOUND_FOR_VEHICLE = 103
+    OSRM_CONNECTION_ERROR = 104
+    OSRM_MATRIX_ERROR = 105
+    WEIGHT_EXCEEDS_CAPACITY = 106
+    ARC_COST_NOT_SET = 107
+    TIME_LIMIT_REACHED = 108
+    NO_SOLUTION_FOUND = 109
+    UNEXPECTED_ERROR = 110
+    OUT_OF_MEMORY = 111

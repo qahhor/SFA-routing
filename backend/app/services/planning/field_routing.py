@@ -1,519 +1,574 @@
 """
-Field Team Routing Service.
+Routing Services based on Google OR-Tools.
 
-Сервис для маршрутизации полевых команд с планированием на несколько дней.
-Использует солверы VROOM/OR-Tools/Genetic для оптимизации маршрутов.
+TSP - Traveling Salesperson Problem for salesperson route planning.
+VRPC - Vehicle Routing Problem with Capacity Constraints.
 """
 
 import logging
-import time as time_module
-from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
 from typing import Optional
 
+import httpx
+
 from app.schemas.field_routing import (
-    DailySummary,
-    FieldRoutingRequest,
-    FieldRoutingResponse,
-    RoutingMode,
-    ScheduledVisit,
-    UnassignedVisit,
-)
-from app.services.routing.osrm_client import OSRMClient, osrm_client
-from app.services.solvers.solver_interface import (
-    Job,
-    Location,
-    RoutingProblem,
-    SolverFactory,
-    SolverType,
-    TimeWindow,
-    TransportMode,
-    VehicleConfig,
+    ErrorCode,
+    TSPAutoResponse,
+    TSPData,
+    TSPKind,
+    TSPRequest,
+    TSPSingleResponse,
+    VisitIntensity,
+    VRPCLoop,
+    VRPCRequest,
+    VRPCResponse,
 )
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class DayPlan:
-    """План на один день."""
-
-    day_number: int
-    visits: list[ScheduledVisit]
-    total_distance_km: float
-    total_duration_minutes: int
-    start_time: time
-    end_time: time
+# ============================================================
+# OSRM Client
+# ============================================================
 
 
-class FieldRoutingService:
-    """
-    Сервис маршрутизации полевых команд.
+class OSRMClient:
+    """Client for OSRM distance matrix API."""
 
-    Планирует оптимальные маршруты для заданных точек визита
-    на указанное количество рабочих дней с учётом:
-    - Приоритетов визитов
-    - Временных окон доступности клиентов
-    - Рабочих часов агента
-    - Времени обслуживания и приёмки
-    """
+    def __init__(self, timeout: float = 30.0):
+        self.timeout = timeout
 
-    def __init__(self, osrm: Optional[OSRMClient] = None):
-        self.osrm = osrm or osrm_client
-
-    async def plan_route(
+    async def get_distance_matrix(
         self,
-        request: FieldRoutingRequest,
-        plan_start_date: Optional[date] = None,
-    ) -> FieldRoutingResponse:
+        coordinates: list[tuple[float, float]],
+        map_url: str,
+        profile: str = "driving",
+    ) -> tuple[Optional[list[list[float]]], Optional[list[list[float]]]]:
         """
-        Планирует маршрут для полевой команды.
+        Get distance and duration matrix from OSRM.
 
         Args:
-            request: Параметры планирования
-            plan_start_date: Дата начала планирования (по умолчанию завтра)
+            coordinates: List of (lat, lng) tuples
+            map_url: OSRM server URL
+            profile: Routing profile (driving, walking, cycling)
 
         Returns:
-            FieldRoutingResponse с оптимизированным маршрутом
+            Tuple of (durations matrix, distances matrix) or (None, None) on error
         """
-        start_time = time_module.time()
+        if len(coordinates) < 2:
+            return None, None
 
-        if plan_start_date is None:
-            plan_start_date = date.today() + timedelta(days=1)
+        # Build coordinates string (lng,lat format for OSRM)
+        coords_str = ";".join(f"{lng},{lat}" for lat, lng in coordinates)
 
-        # Преобразуем точки визита в формат солвера
-        problem = self._build_routing_problem(request, plan_start_date)
-
-        # Выбираем и запускаем солвер
-        solver_type = self._select_solver(len(request.visits))
-        solver_used = solver_type.value
+        url = f"{map_url}/table/v1/{profile}/{coords_str}"
+        params = {"annotations": "duration,distance"}
 
         try:
-            solution = await SolverFactory.solve_with_fallback(problem, preferred=solver_type)
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+
+                if data.get("code") != "Ok":
+                    logger.error(f"OSRM error: {data.get('message', 'Unknown error')}")
+                    return None, None
+
+                return data.get("durations"), data.get("distances")
+
+        except httpx.ConnectError as e:
+            logger.error(f"OSRM connection error: {e}")
+            return None, None
+        except httpx.HTTPStatusError as e:
+            logger.error(f"OSRM HTTP error: {e}")
+            return None, None
         except Exception as e:
-            logger.error(f"Solver failed: {e}")
-            # Fallback к простому распределению по приоритетам
-            solution = self._greedy_fallback(request, plan_start_date)
-            solver_used = "greedy_fallback"
+            logger.error(f"OSRM unexpected error: {e}")
+            return None, None
 
-        # Формируем ответ
-        computation_time_ms = int((time_module.time() - start_time) * 1000)
 
-        return self._build_response(
-            solution=solution,
-            request=request,
-            plan_start_date=plan_start_date,
-            solver_used=solver_used,
-            computation_time_ms=computation_time_ms,
-        )
+# ============================================================
+# TSP Service (Traveling Salesperson Problem)
+# ============================================================
 
-    def _build_routing_problem(
-        self,
-        request: FieldRoutingRequest,
-        plan_start_date: date,
-    ) -> RoutingProblem:
-        """Строит задачу маршрутизации для солвера."""
 
-        # Создаём виртуальные транспортные средства (по одному на день)
-        vehicles = []
-        for day in range(request.working_days):
-            day_date = plan_start_date + timedelta(days=day)
+class TSPService:
+    """
+    Traveling Salesperson Problem service.
 
-            # Начало и конец рабочего дня
-            work_start = datetime.combine(day_date, request.working_hours.start)
-            work_end = datetime.combine(day_date, request.working_hours.end)
+    Generates routes for a salesperson visiting multiple points
+    over 4 weeks, considering visit intensity and constraints.
+    """
 
-            # Стартовая локация
-            if request.start_location:
-                start_loc = Location(
-                    latitude=request.start_location.latitude,
-                    longitude=request.start_location.longitude,
-                )
-            else:
-                # Используем первую точку как стартовую
-                start_loc = Location(
-                    latitude=request.visits[0].location.latitude,
-                    longitude=request.visits[0].location.longitude,
-                )
+    # Days per week for planning
+    DAYS_PER_WEEK = 6  # Working days (Mon-Sat)
+    WEEKS = 4  # Planning horizon
 
-            vehicle = VehicleConfig(
-                id=f"day_{day + 1}",
-                capacity_kg=float("inf"),  # Неограниченная вместимость
-                capacity_volume=float("inf"),
-                start_location=start_loc,
-                end_location=start_loc,  # Возврат в начальную точку
-                time_window=TimeWindow(start=work_start, end=work_end),
-                max_stops=request.max_visits_per_day,
-            )
-            vehicles.append(vehicle)
+    # Visit frequency mapping (visits per 4 weeks)
+    INTENSITY_TO_VISITS = {
+        VisitIntensity.THREE_TIMES_A_WEEK: 12,  # 3 * 4 weeks
+        VisitIntensity.TWICE_A_WEEK: 8,  # 2 * 4 weeks
+        VisitIntensity.ONCE_A_WEEK: 4,  # 1 * 4 weeks
+        VisitIntensity.TWICE_A_MONTH: 2,  # 2 per month
+        VisitIntensity.ONCE_A_MONTH: 1,  # 1 per month
+    }
 
-        # Создаём задания (jobs) для каждой точки визита
-        jobs = []
-        for visit in request.visits:
-            # Общее время обслуживания = service_time + manager_acceptance_time
-            total_service_time = (visit.service_time or 15) + (visit.manager_acceptance_time or 0)
+    def __init__(self, osrm_client: Optional[OSRMClient] = None):
+        self.osrm = osrm_client or OSRMClient()
 
-            # Временное окно доступности (для всех дней)
-            # Солвер сам выберет подходящий день
-            job = Job(
-                id=visit.id,
-                location=Location(
-                    latitude=visit.location.latitude,
-                    longitude=visit.location.longitude,
-                ),
-                service_duration_minutes=total_service_time,
-                priority=visit.priority,
-                # Временные окна будут проверяться при распределении по дням
-                time_window=TimeWindow(
-                    start=datetime.combine(plan_start_date, visit.available_hours.start),
-                    end=datetime.combine(plan_start_date, visit.available_hours.end),
-                ),
-            )
-            jobs.append(job)
-
-        # Определяем режим транспорта
-        transport_mode = TransportMode.CAR if request.routing_mode == RoutingMode.CAR else TransportMode.WALKING
-
-        return RoutingProblem(
-            jobs=jobs,
-            vehicles=vehicles,
-            transport_mode=transport_mode,
-        )
-
-    def _select_solver(self, num_visits: int) -> SolverType:
-        """Выбирает оптимальный солвер на основе количества точек."""
-        if num_visits <= 100:
-            return SolverType.VROOM
-        elif num_visits <= 300:
-            return SolverType.ORTOOLS
-        else:
-            return SolverType.GENETIC
-
-    def _greedy_fallback(
-        self,
-        request: FieldRoutingRequest,
-        plan_start_date: date,
-    ) -> dict:
+    async def solve(self, request: TSPRequest) -> TSPAutoResponse | TSPSingleResponse:
         """
-        Простой greedy алгоритм как fallback.
+        Solve TSP problem.
 
-        Распределяет визиты по дням согласно приоритетам,
-        без оптимизации маршрута внутри дня.
+        Args:
+            request: TSP request with kind and data
+
+        Returns:
+            TSPAutoResponse or TSPSingleResponse based on kind
         """
-        # Сортируем по приоритету (1 = наивысший)
-        sorted_visits = sorted(request.visits, key=lambda v: v.priority)
+        if request.kind == TSPKind.MANUAL:
+            return TSPSingleResponse(
+                code=ErrorCode.INVALID_INPUT_FORMAT,
+                error_text="Manual kind is not implemented",
+            )
 
-        routes = []
-        unassigned = []
+        try:
+            # Get distance matrix from OSRM
+            coordinates = [
+                (float(loc.lat), float(loc.lng)) for loc in request.data.locations
+            ]
 
-        visits_per_day = request.max_visits_per_day
-        current_day = 1
-        day_visits = []
+            durations, distances = await self.osrm.get_distance_matrix(
+                coordinates=coordinates,
+                map_url=request.data.map_url,
+                profile=request.data.profile.value,
+            )
 
-        for visit in sorted_visits:
-            if current_day > request.working_days:
-                # Больше нет дней, визит не распределён
-                unassigned.append({"id": visit.id, "reason": "no_available_days"})
-                continue
+            if durations is None:
+                return self._error_response(
+                    request.kind,
+                    ErrorCode.OSRM_CONNECTION_ERROR,
+                    "Failed to connect to OSRM server",
+                )
 
-            day_visits.append(visit)
+            # Build visit requirements based on intensity
+            visit_requirements = self._build_visit_requirements(request.data)
 
-            if len(day_visits) >= visits_per_day:
-                routes.append({"day": current_day, "visits": day_visits})
-                day_visits = []
-                current_day += 1
+            # Solve the problem
+            if request.kind == TSPKind.AUTO:
+                return await self._solve_auto(request.data, durations, visit_requirements)
+            else:  # SINGLE
+                return await self._solve_single(request.data, durations, visit_requirements)
 
-        # Добавляем оставшиеся визиты последнего дня
-        if day_visits and current_day <= request.working_days:
-            routes.append({"day": current_day, "visits": day_visits})
+        except MemoryError:
+            return self._error_response(
+                request.kind, ErrorCode.OUT_OF_MEMORY, "Out of memory"
+            )
+        except Exception as e:
+            logger.exception(f"TSP solver error: {e}")
+            return self._error_response(
+                request.kind, ErrorCode.UNEXPECTED_ERROR, str(e)
+            )
 
-        return {
-            "routes": routes,
-            "unassigned": unassigned,
-            "is_fallback": True,
+    def _build_visit_requirements(self, data: TSPData) -> list[int]:
+        """Build list of required visits per location for 4 weeks."""
+        return [
+            self.INTENSITY_TO_VISITS.get(loc.visit_intensity, 1)
+            for loc in data.locations
+        ]
+
+    async def _solve_auto(
+        self,
+        data: TSPData,
+        durations: list[list[float]],
+        visit_requirements: list[int],
+    ) -> TSPAutoResponse:
+        """
+        Solve TSP with auto mode - generate multiple optimal plans.
+        """
+        try:
+            # Generate multiple plans with different starting strategies
+            plans = []
+
+            # Plan 1: Standard greedy approach
+            plan1 = self._generate_plan(data, durations, visit_requirements, seed=0)
+            if plan1:
+                plans.append(plan1)
+
+            # Plan 2: Reversed order
+            plan2 = self._generate_plan(data, durations, visit_requirements, seed=1)
+            if plan2 and plan2 != plan1:
+                plans.append(plan2)
+
+            # Plan 3: Random shuffle (if enough locations)
+            if len(data.locations) > 5:
+                plan3 = self._generate_plan(data, durations, visit_requirements, seed=42)
+                if plan3 and plan3 not in plans:
+                    plans.append(plan3)
+
+            if not plans:
+                return TSPAutoResponse(
+                    code=ErrorCode.NO_SOLUTION_FOUND,
+                    error_text="No solution found to the problem",
+                )
+
+            return TSPAutoResponse(code=ErrorCode.SUCCESS, plans=plans)
+
+        except Exception as e:
+            logger.exception(f"TSP auto solve error: {e}")
+            return TSPAutoResponse(
+                code=ErrorCode.UNEXPECTED_ERROR, error_text=str(e)
+            )
+
+    async def _solve_single(
+        self,
+        data: TSPData,
+        durations: list[list[float]],
+        visit_requirements: list[int],
+    ) -> TSPSingleResponse:
+        """
+        Solve TSP with single mode - generate one optimal plan.
+        """
+        try:
+            routes = self._generate_plan(data, durations, visit_requirements, seed=0)
+
+            if not routes:
+                return TSPSingleResponse(
+                    code=ErrorCode.NO_SOLUTION_FOUND,
+                    error_text="No solution found to the problem",
+                )
+
+            # Find ignored locations (those not visited enough times)
+            visited_counts = [0] * len(data.locations)
+            for week in routes:
+                for day in week:
+                    for loc_idx in day:
+                        if 0 <= loc_idx < len(visited_counts):
+                            visited_counts[loc_idx] += 1
+
+            ignored_locations = [
+                i
+                for i, (visited, required) in enumerate(
+                    zip(visited_counts, visit_requirements)
+                )
+                if visited < required
+            ]
+
+            return TSPSingleResponse(
+                code=ErrorCode.SUCCESS,
+                routes=routes,
+                ignored_locations=ignored_locations if ignored_locations else None,
+            )
+
+        except Exception as e:
+            logger.exception(f"TSP single solve error: {e}")
+            return TSPSingleResponse(
+                code=ErrorCode.UNEXPECTED_ERROR, error_text=str(e)
+            )
+
+    def _generate_plan(
+        self,
+        data: TSPData,
+        durations: list[list[float]],
+        visit_requirements: list[int],
+        seed: int = 0,
+    ) -> Optional[list[list[list[int]]]]:
+        """
+        Generate a 4-week plan using greedy nearest neighbor heuristic.
+
+        Returns:
+            4 weeks of daily routes, each as list of location indexes
+        """
+        max_per_day = data.max_visit_limit_per_day
+        working_seconds = data.working_seconds_per_day
+
+        # Track remaining visits needed for each location
+        remaining_visits = visit_requirements.copy()
+
+        # Calculate service time per location
+        service_times = [loc.visit_duration for loc in data.locations]
+
+        # Generate route for 4 weeks
+        weeks: list[list[list[int]]] = []
+
+        for week_num in range(self.WEEKS):
+            week_routes: list[list[int]] = []
+
+            for day_num in range(self.DAYS_PER_WEEK):
+                day_route: list[int] = []
+                day_time = 0.0
+                current_location = -1  # Start from depot (virtual)
+
+                # Find locations that need visits
+                candidates = [
+                    i for i, r in enumerate(remaining_visits) if r > 0
+                ]
+
+                if not candidates:
+                    week_routes.append([])
+                    continue
+
+                # Shuffle candidates based on seed for variety
+                if seed > 0:
+                    import random
+                    random.seed(seed + week_num * 10 + day_num)
+                    random.shuffle(candidates)
+
+                while len(day_route) < max_per_day and candidates:
+                    # Find nearest unvisited location
+                    best_idx = None
+                    best_time = float("inf")
+
+                    for idx in candidates:
+                        if current_location < 0:
+                            travel_time = 0  # First location
+                        else:
+                            travel_time = durations[current_location][idx]
+
+                        total_time = day_time + travel_time + service_times[idx]
+
+                        if total_time <= working_seconds and travel_time < best_time:
+                            best_time = travel_time
+                            best_idx = idx
+
+                    if best_idx is None:
+                        break
+
+                    # Add to route
+                    day_route.append(best_idx)
+                    if current_location >= 0:
+                        day_time += durations[current_location][best_idx]
+                    day_time += service_times[best_idx]
+                    current_location = best_idx
+
+                    # Update remaining visits
+                    remaining_visits[best_idx] -= 1
+                    if remaining_visits[best_idx] <= 0:
+                        candidates.remove(best_idx)
+
+                week_routes.append(day_route)
+
+            weeks.append(week_routes)
+
+        return weeks if any(any(day for day in week) for week in weeks) else None
+
+    def _error_response(
+        self, kind: TSPKind, code: int, message: str
+    ) -> TSPAutoResponse | TSPSingleResponse:
+        """Create error response based on kind."""
+        if kind == TSPKind.AUTO:
+            return TSPAutoResponse(code=code, error_text=message)
+        return TSPSingleResponse(code=code, error_text=message)
+
+
+# ============================================================
+# VRPC Service (Vehicle Routing Problem with Capacity)
+# ============================================================
+
+
+class VRPCService:
+    """
+    Vehicle Routing Problem with Capacity Constraints service.
+
+    Handles multi-vehicle delivery scenarios with:
+    - Vehicle capacity constraints
+    - Multiple vehicle types
+    - Depot start/end location
+    """
+
+    def __init__(self, osrm_client: Optional[OSRMClient] = None):
+        self.osrm = osrm_client or OSRMClient()
+
+    async def solve(self, request: VRPCRequest) -> VRPCResponse:
+        """
+        Solve VRPC problem.
+
+        Args:
+            request: VRPC request with depot, points, and vehicles
+
+        Returns:
+            VRPCResponse with routes per vehicle
+        """
+        try:
+            # Validate vehicle types have URLs
+            for vehicle in request.vehicles:
+                url = getattr(request.urls, vehicle.type.value, None)
+                if not url:
+                    return VRPCResponse(
+                        code=ErrorCode.URL_NOT_FOUND_FOR_VEHICLE,
+                        error_text=f"URL not found for vehicle type: {vehicle.type.value}",
+                    )
+
+            # Check capacity constraints
+            total_weight = sum(p.weight for p in request.points)
+            total_capacity = sum(v.capacity for v in request.vehicles)
+
+            if total_weight > total_capacity:
+                return VRPCResponse(
+                    code=ErrorCode.WEIGHT_EXCEEDS_CAPACITY,
+                    error_text=f"Total weight ({total_weight}) exceeds total capacity ({total_capacity})",
+                )
+
+            # Build coordinates list (depot + points)
+            depot_coord = (float(request.depot.lat), float(request.depot.lng))
+            point_coords = [(float(p.lat), float(p.lng)) for p in request.points]
+            all_coords = [depot_coord] + point_coords
+
+            # Get distance matrix for first vehicle type (as baseline)
+            first_vehicle_type = request.vehicles[0].type.value
+            map_url = getattr(request.urls, first_vehicle_type)
+
+            durations, distances = await self.osrm.get_distance_matrix(
+                coordinates=all_coords,
+                map_url=map_url,
+                profile=self._type_to_profile(first_vehicle_type),
+            )
+
+            if durations is None or distances is None:
+                return VRPCResponse(
+                    code=ErrorCode.OSRM_CONNECTION_ERROR,
+                    error_text="Failed to get distance matrix from OSRM",
+                )
+
+            # Solve using greedy algorithm
+            solution = self._solve_greedy(
+                request=request,
+                durations=durations,
+                distances=distances,
+            )
+
+            return solution
+
+        except MemoryError:
+            return VRPCResponse(
+                code=ErrorCode.OUT_OF_MEMORY, error_text="Out of memory"
+            )
+        except Exception as e:
+            logger.exception(f"VRPC solver error: {e}")
+            return VRPCResponse(code=ErrorCode.UNEXPECTED_ERROR, error_text=str(e))
+
+    def _type_to_profile(self, vehicle_type: str) -> str:
+        """Convert vehicle type to OSRM profile."""
+        mapping = {
+            "car": "driving",
+            "truck": "driving",
+            "walking": "walking",
+            "cycling": "cycling",
         }
+        return mapping.get(vehicle_type, "driving")
 
-    def _build_response(
+    def _solve_greedy(
         self,
-        solution: dict,
-        request: FieldRoutingRequest,
-        plan_start_date: date,
-        solver_used: str,
-        computation_time_ms: int,
-    ) -> FieldRoutingResponse:
-        """Строит ответ API из решения солвера."""
+        request: VRPCRequest,
+        durations: list[list[float]],
+        distances: list[list[float]],
+    ) -> VRPCResponse:
+        """
+        Solve VRPC using greedy nearest neighbor algorithm.
 
-        scheduled_visits: list[ScheduledVisit] = []
-        daily_summaries: list[DailySummary] = []
-        unassigned_visits: list[UnassignedVisit] = []
+        Depot is at index 0, points are at indexes 1 to N.
+        """
+        num_points = len(request.points)
+        max_distance = request.max_cycle_distance or float("inf")
 
+        # Track which points are assigned
+        unassigned = set(range(1, num_points + 1))  # 1-indexed (0 is depot)
+        point_weights = {i + 1: p.weight for i, p in enumerate(request.points)}
+
+        vehicle_routes: list[list[VRPCLoop]] = []
         total_distance = 0.0
-        total_duration = 0
+        total_duration = 0.0
 
-        # Обрабатываем решение солвера
-        if solution.get("is_fallback"):
-            # Fallback решение - простое распределение
-            scheduled_visits, daily_summaries = self._process_fallback_solution(
-                solution, request, plan_start_date
-            )
-        else:
-            # Решение от солвера
-            scheduled_visits, daily_summaries = self._process_solver_solution(
-                solution, request, plan_start_date
-            )
+        for vehicle in request.vehicles:
+            loops: list[VRPCLoop] = []
+            remaining_capacity = vehicle.capacity
 
-        # Обрабатываем нераспределённые визиты
-        if solution.get("unassigned"):
-            for item in solution["unassigned"]:
-                unassigned_visits.append(
-                    UnassignedVisit(
-                        visit_id=item.get("id", str(item)),
-                        reason=item.get("reason", "could_not_fit_in_schedule"),
+            while unassigned:
+                # Start a new loop from depot
+                loop_route: list[int] = []
+                loop_distance = 0.0
+                loop_duration = 0.0
+                current = 0  # Start at depot
+                loop_capacity = remaining_capacity
+
+                while True:
+                    # Find nearest feasible point
+                    best_point = None
+                    best_distance = float("inf")
+
+                    for point in unassigned:
+                        weight = point_weights[point]
+
+                        # Check capacity
+                        if weight > loop_capacity:
+                            continue
+
+                        # Check distance constraint
+                        dist_to_point = distances[current][point]
+                        dist_back = distances[point][0]  # Return to depot
+
+                        if loop_distance + dist_to_point + dist_back > max_distance:
+                            continue
+
+                        if dist_to_point < best_distance:
+                            best_distance = dist_to_point
+                            best_point = point
+
+                    if best_point is None:
+                        break
+
+                    # Add point to loop
+                    loop_route.append(best_point - 1)  # Convert to 0-indexed for output
+                    loop_distance += distances[current][best_point]
+                    loop_duration += durations[current][best_point]
+                    loop_capacity -= point_weights[best_point]
+                    current = best_point
+                    unassigned.remove(best_point)
+
+                # Return to depot
+                if loop_route:
+                    loop_distance += distances[current][0]
+                    loop_duration += durations[current][0]
+
+                    loops.append(
+                        VRPCLoop(
+                            route=loop_route,
+                            distance=round(loop_distance, 2),
+                            duration=round(loop_duration, 2),
+                        )
                     )
-                )
 
-        # Подсчитываем общую статистику
-        for summary in daily_summaries:
-            total_distance += summary.total_distance_km
-            total_duration += summary.total_duration_minutes
+                    total_distance += loop_distance
+                    total_duration += loop_duration
 
-        return FieldRoutingResponse(
-            total_visits=len(scheduled_visits),
+                    # Update remaining capacity for next loop
+                    remaining_capacity = vehicle.capacity
+                else:
+                    # No more points can be assigned to this vehicle
+                    break
+
+            vehicle_routes.append(loops)
+
+            if not unassigned:
+                break
+
+        # Check if all points were assigned
+        if unassigned:
+            return VRPCResponse(
+                code=ErrorCode.NO_SOLUTION_FOUND,
+                error_text=f"Could not assign all points. {len(unassigned)} points remaining.",
+            )
+
+        return VRPCResponse(
+            code=ErrorCode.SUCCESS,
+            vehicles=vehicle_routes,
             total_distance=round(total_distance, 2),
-            total_duration=total_duration,
-            days_used=len(daily_summaries),
-            daily_summary=daily_summaries,
-            scheduled_visits=scheduled_visits,
-            unassigned_visits=unassigned_visits,
-            solver_used=solver_used,
-            computation_time_ms=computation_time_ms,
+            total_duration=round(total_duration, 2),
         )
 
-    def _process_fallback_solution(
-        self,
-        solution: dict,
-        request: FieldRoutingRequest,
-        plan_start_date: date,
-    ) -> tuple[list[ScheduledVisit], list[DailySummary]]:
-        """Обрабатывает fallback решение."""
 
-        scheduled_visits = []
-        daily_summaries = []
+# ============================================================
+# Service Instances
+# ============================================================
 
-        # Создаём словарь точек для быстрого доступа
-        visits_map = {v.id: v for v in request.visits}
-
-        for route_data in solution.get("routes", []):
-            day_number = route_data["day"]
-            day_visits = route_data["visits"]
-            day_date = plan_start_date + timedelta(days=day_number - 1)
-
-            # Начинаем с начала рабочего дня
-            current_time = datetime.combine(day_date, request.working_hours.start)
-            day_distance = 0.0
-            sequence = 1
-
-            for i, visit in enumerate(day_visits):
-                if isinstance(visit, dict):
-                    visit_id = visit.get("id")
-                    visit_data = visits_map.get(visit_id)
-                else:
-                    visit_data = visit
-                    visit_id = visit.id
-
-                if not visit_data:
-                    continue
-
-                service_time = (visit_data.service_time or 15) + (visit_data.manager_acceptance_time or 0)
-                visit_end = current_time + timedelta(minutes=service_time)
-
-                # Оценка расстояния до следующей точки (упрощённо)
-                distance_to_next = None
-                travel_time_to_next = None
-
-                if i < len(day_visits) - 1:
-                    next_visit = day_visits[i + 1]
-                    if isinstance(next_visit, dict):
-                        next_visit_data = visits_map.get(next_visit.get("id"))
-                    else:
-                        next_visit_data = next_visit
-
-                    if next_visit_data:
-                        # Примерная оценка расстояния (Haversine)
-                        distance_to_next = self._haversine_distance(
-                            visit_data.location.latitude,
-                            visit_data.location.longitude,
-                            next_visit_data.location.latitude,
-                            next_visit_data.location.longitude,
-                        )
-                        # Примерное время в пути (40 км/ч для авто, 5 км/ч для пешком)
-                        speed = 40 if request.routing_mode == RoutingMode.CAR else 5
-                        travel_time_to_next = int((distance_to_next / speed) * 60)
-                        day_distance += distance_to_next
-
-                scheduled_visits.append(
-                    ScheduledVisit(
-                        visit_id=visit_id,
-                        day_number=day_number,
-                        sequence_number=sequence,
-                        scheduled_start=current_time,
-                        scheduled_end=visit_end,
-                        distance_to_next=round(distance_to_next, 2) if distance_to_next else None,
-                        travel_time_to_next=travel_time_to_next,
-                    )
-                )
-
-                # Переходим к следующему визиту
-                current_time = visit_end + timedelta(minutes=travel_time_to_next or 10)
-                sequence += 1
-
-            # Статистика дня
-            if day_visits:
-                end_time = scheduled_visits[-1].scheduled_end if scheduled_visits else current_time
-                day_start = datetime.combine(day_date, request.working_hours.start)
-                duration = int((end_time - day_start).total_seconds() / 60)
-
-                daily_summaries.append(
-                    DailySummary(
-                        day_number=day_number,
-                        visits_count=len(day_visits),
-                        total_distance_km=round(day_distance, 2),
-                        total_duration_minutes=duration,
-                        start_time=request.working_hours.start,
-                        end_time=end_time.time(),
-                    )
-                )
-
-        return scheduled_visits, daily_summaries
-
-    def _process_solver_solution(
-        self,
-        solution: dict,
-        request: FieldRoutingRequest,
-        plan_start_date: date,
-    ) -> tuple[list[ScheduledVisit], list[DailySummary]]:
-        """Обрабатывает решение от солвера."""
-
-        # Если солвер вернул SolutionResult
-        if hasattr(solution, "routes"):
-            routes = solution.routes
-        else:
-            routes = solution.get("routes", [])
-
-        scheduled_visits = []
-        daily_summaries = []
-        visits_map = {v.id: v for v in request.visits}
-
-        for route in routes:
-            # Извлекаем номер дня из vehicle_id (формат "day_N")
-            if hasattr(route, "vehicle_id"):
-                vehicle_id = route.vehicle_id
-            else:
-                vehicle_id = route.get("vehicle_id", "day_1")
-
-            try:
-                day_number = int(vehicle_id.split("_")[1])
-            except (IndexError, ValueError):
-                day_number = 1
-
-            day_date = plan_start_date + timedelta(days=day_number - 1)
-
-            # Обрабатываем шаги маршрута
-            if hasattr(route, "steps"):
-                steps = route.steps
-            else:
-                steps = route.get("steps", [])
-
-            day_distance = 0.0
-            day_duration = 0
-            sequence = 1
-            first_time = None
-            last_time = None
-
-            for i, step in enumerate(steps):
-                if hasattr(step, "job_id"):
-                    job_id = step.job_id
-                else:
-                    job_id = step.get("job_id") or step.get("id")
-
-                if not job_id or job_id.startswith("depot"):
-                    continue
-
-                visit_data = visits_map.get(job_id)
-                if not visit_data:
-                    continue
-
-                # Время визита
-                if hasattr(step, "arrival_time"):
-                    arrival = step.arrival_time
-                    departure = step.departure_time
-                else:
-                    arrival = datetime.combine(day_date, request.working_hours.start) + timedelta(minutes=sequence * 30)
-                    service_time = (visit_data.service_time or 15) + (visit_data.manager_acceptance_time or 0)
-                    departure = arrival + timedelta(minutes=service_time)
-
-                if first_time is None:
-                    first_time = arrival
-                last_time = departure
-
-                # Расстояние до следующей точки
-                distance_to_next = None
-                travel_time_to_next = None
-
-                if hasattr(step, "distance_to_next"):
-                    distance_to_next = step.distance_to_next / 1000  # м в км
-                    travel_time_to_next = step.duration_to_next // 60 if hasattr(step, "duration_to_next") else None
-
-                if distance_to_next:
-                    day_distance += distance_to_next
-
-                scheduled_visits.append(
-                    ScheduledVisit(
-                        visit_id=job_id,
-                        day_number=day_number,
-                        sequence_number=sequence,
-                        scheduled_start=arrival,
-                        scheduled_end=departure,
-                        distance_to_next=round(distance_to_next, 2) if distance_to_next else None,
-                        travel_time_to_next=travel_time_to_next,
-                    )
-                )
-
-                sequence += 1
-
-            # Статистика дня
-            if steps and first_time and last_time:
-                day_duration = int((last_time - first_time).total_seconds() / 60)
-
-                daily_summaries.append(
-                    DailySummary(
-                        day_number=day_number,
-                        visits_count=sequence - 1,
-                        total_distance_km=round(day_distance, 2),
-                        total_duration_minutes=day_duration,
-                        start_time=first_time.time(),
-                        end_time=last_time.time(),
-                    )
-                )
-
-        return scheduled_visits, daily_summaries
-
-    @staticmethod
-    def _haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        """Вычисляет расстояние между двумя точками в км (формула Haversine)."""
-        from math import asin, cos, radians, sin, sqrt
-
-        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-        dlat = lat2 - lat1
-        dlon = lon2 - lon1
-
-        a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-        c = 2 * asin(sqrt(a))
-
-        # Радиус Земли в км
-        r = 6371
-        return c * r
-
-
-# Singleton instance
-field_routing_service = FieldRoutingService()
+tsp_service = TSPService()
+vrpc_service = VRPCService()
