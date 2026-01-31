@@ -2,7 +2,12 @@
 Pydantic schemas for API request/response models.
 """
 
-from app.schemas.agent import AgentCreate, AgentListResponse, AgentResponse, AgentUpdate
+from app.schemas.agent import (
+    AgentCreate,
+    AgentListResponse,
+    AgentResponse,
+    AgentUpdate,
+)
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -32,16 +37,16 @@ from app.schemas.delivery import (
     DeliveryRouteStopResponse,
 )
 from app.schemas.field_routing import (
+    DayRoute,
     ErrorCode,
-    Profile,
+    Intensity,
+    StartLocation,
     TSPAutoResponse,
-    TSPData,
     TSPKind,
     TSPLocation,
     TSPRequest,
     TSPSingleResponse,
     VehicleType,
-    VisitIntensity,
     VRPCDepot,
     VRPCLoop,
     VRPCPoint,
@@ -49,6 +54,7 @@ from app.schemas.field_routing import (
     VRPCResponse,
     VRPCUrls,
     VRPCVehicle,
+    WeekPlan,
 )
 from app.schemas.planning import (
     DailyPlanResponse,
@@ -108,11 +114,12 @@ __all__ = [
     "RegisterResponse",
     # TSP (Traveling Salesperson Problem)
     "TSPKind",
-    "VisitIntensity",
-    "Profile",
+    "Intensity",
     "TSPLocation",
-    "TSPData",
+    "StartLocation",
     "TSPRequest",
+    "DayRoute",
+    "WeekPlan",
     "TSPAutoResponse",
     "TSPSingleResponse",
     # VRPC (Vehicle Routing Problem with Capacity)

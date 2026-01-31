@@ -11,6 +11,7 @@ Schedule: Daily at 05:00 local time (before work day starts)
 import asyncio
 import logging
 from datetime import date, datetime
+from enum import Enum
 from typing import Optional
 from uuid import UUID
 
@@ -18,6 +19,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
+
+
+class WarmingStrategy(str, Enum):
+    """Strategy for cache warming priority."""
+
+    PRIORITY_FIRST = "priority_first"  # A-clients first, then B, C
+    GEOGRAPHIC = "geographic"  # By geographic clusters
+    TIME_BASED = "time_based"  # By time of next visit
 
 
 class CacheWarmer:

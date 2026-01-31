@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 tsp_router = APIRouter(tags=["TSP - Traveling Salesperson Problem"])
 
 # VRPC Router - mounted at /vrpc
-vrpc_router = APIRouter(prefix="/vrpc", tags=["VRPC - Vehicle Routing Problem"])
+vrpc_router = APIRouter(
+    prefix="/vrpc", tags=["VRPC - Vehicle Routing Problem"]
+)
 
 
 # ============================================================
@@ -46,16 +48,15 @@ vrpc_router = APIRouter(prefix="/vrpc", tags=["VRPC - Vehicle Routing Problem"])
 
     ## Kinds
 
-    - **auto**: Generate multiple optimal plans
+    - **auto**: Generate multiple optimal plans (with clustering)
     - **single**: Generate one optimal plan
-    - **manual**: Not implemented
 
     ## Visit Intensities
 
-    - `THREE_TIMES_A_WEEK` - 3 visits per week (12 total in 4 weeks)
-    - `TWICE_A_WEEK` - 2 visits per week (8 total)
-    - `ONCE_A_WEEK` - 1 visit per week (4 total)
-    - `TWICE_A_MONTH` - 2 visits per month
+    - `THREE_TIMES_A_WEEK` - 3 visits per week (Mon, Wed, Fri)
+    - `TWO_TIMES_A_WEEK` - 2 visits per week (Mon, Thu)
+    - `ONCE_A_WEEK` - 1 visit per week
+    - `ONCE_IN_TWO_WEEKS` - 1 visit per 2 weeks
     - `ONCE_A_MONTH` - 1 visit per month
 
     ## Response Codes
@@ -81,8 +82,17 @@ vrpc_router = APIRouter(prefix="/vrpc", tags=["VRPC - Vehicle Routing Problem"])
                                 "code": 100,
                                 "plans": [
                                     [
-                                        [[2, 5, 4], [1, 7, 3, 6]],
-                                        [[2, 5, 4], [1, 7, 3, 6]],
+                                        {
+                                            "weekNumber": 1,
+                                            "days": [
+                                                {
+                                                    "dayNumber": 1,
+                                                    "route": ["loc-1"],
+                                                    "totalDuration": 120,
+                                                    "totalDistance": 15.5,
+                                                }
+                                            ],
+                                        }
                                     ]
                                 ],
                             },
@@ -91,18 +101,26 @@ vrpc_router = APIRouter(prefix="/vrpc", tags=["VRPC - Vehicle Routing Problem"])
                             "summary": "Single mode success",
                             "value": {
                                 "code": 100,
-                                "routes": [
-                                    [[2, 5, 4], [1, 7, 3, 6]],
-                                    [[2, 5, 4], [1, 7, 3, 6]],
+                                "weeks": [
+                                    {
+                                        "weekNumber": 1,
+                                        "days": [
+                                            {
+                                                "dayNumber": 1,
+                                                "route": ["loc-1", "loc-2"],
+                                                "totalDuration": 180,
+                                                "totalDistance": 22.3,
+                                            }
+                                        ],
+                                    }
                                 ],
-                                "ignored_locations": [8, 9],
                             },
                         },
                         "error": {
                             "summary": "Error response",
                             "value": {
                                 "code": 109,
-                                "error_text": "No solution found to the problem",
+                                "error_text": "No solution found",
                             },
                         },
                     }
@@ -122,15 +140,14 @@ async def solve_tsp(
     minimum time spent on the road.
 
     Constraints:
-    - Maximum number of points in daily route
-    - Working hours per day in seconds
+    - Working hours per day (8 hours)
     - Visit duration at each point
     - Intensity of visits at each point
+    - Working days for each location
     """
     logger.info(
         f"TSP request: kind={request.kind.value}, "
-        f"locations={len(request.data.locations)}, "
-        f"profile={request.data.profile.value}"
+        f"locations={len(request.locations)}"
     )
 
     response = await tsp_service.solve(request)
