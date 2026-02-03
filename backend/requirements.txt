@@ -34,7 +34,7 @@ pydantic==2.9.2
 pydantic-settings==2.6.0
 
 # Scientific computing for optimization
-numpy==1.26.4  # Last 1.x before EOL, numpy 2.x requires testing
+numpy==2.0.2  # Upgraded from 1.26.4, requires scipy>=1.14 and scikit-learn>=1.5
 scikit-learn==1.5.2
 scipy==1.14.1
 
