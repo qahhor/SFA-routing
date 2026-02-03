@@ -1,67 +1,73 @@
+# ==============================================
+# SFA-Routing Dependencies
+# Updated: 2026-02-03 (Security Audit)
+# ==============================================
+
 # FastAPI and server
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-gunicorn==21.2.0
-python-multipart==0.0.6
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+gunicorn==23.0.0
+python-multipart==0.0.12
+python-jose[cryptography]==3.3.0  # TODO: Update to 3.4.0 when available on PyPI
+bcrypt==4.2.0  # Direct bcrypt (passlib replacement)
 slowapi==0.1.9
+email-validator==2.2.0
 
 # Database
-sqlalchemy==2.0.25
-asyncpg==0.29.0
-alembic==1.13.1
-geoalchemy2==0.14.3
-psycopg2-binary==2.9.9
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+geoalchemy2==0.15.2
+psycopg2-binary==2.9.10
 
 # Async HTTP client
-httpx==0.26.0
-aiohttp==3.9.3
+httpx==0.27.2
+aiohttp==3.10.10  # CVE-2024-23334 fix (>=3.9.4)
 
 # Celery and Redis
-celery[redis]==5.3.6
-redis==5.0.1
+celery[redis]==5.4.0
+redis==5.2.0
+kombu==5.4.2
 
 # Data validation and serialization
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic==2.9.2
+pydantic-settings==2.6.0
 
 # Scientific computing for optimization
-numpy==1.26.3
-scikit-learn==1.4.0
-scipy==1.12.0
+numpy==1.26.4  # Last 1.x before EOL, numpy 2.x requires testing
+scikit-learn==1.5.2
+scipy==1.14.1
 
 # Google OR-Tools for advanced routing optimization
-ortools==9.8.3296
+ortools==9.11.4210
 
 # Geospatial
-shapely==2.0.2
+shapely==2.0.6
 geopy==2.4.1
-h3==3.7.7  # Uber H3 spatial indexing
+h3==3.7.7  # TODO: Migrate to 4.x (breaking API changes)
 
 # Utilities
-python-dateutil==2.8.2
-pytz==2024.1
+python-dateutil==2.9.0.post0
+pytz==2024.2
 
 # Observability
-prometheus-client==0.19.0
-sentry-sdk[fastapi,celery,sqlalchemy,httpx]==1.39.1
+prometheus-client==0.21.0
+sentry-sdk[fastapi,celery,sqlalchemy,httpx]==2.17.0
 
 # PDF generation
-reportlab==4.0.8
-weasyprint==60.2
+reportlab==4.2.4
+weasyprint==62.3  # CVE-2024-28184 fix (>=61.2)
 
 # For test data
-aiosqlite==0.19.0
+aiosqlite==0.20.0
 
 # Testing
-pytest==7.4.4
-pytest-asyncio==0.23.3
-pytest-cov==4.1.0
-httpx==0.26.0
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==5.0.0
 
 # Development
-black==24.1.0
+black==24.10.0
 isort==5.13.2
-flake8==7.0.0
-mypy==1.8.0
+flake8==7.1.1
+mypy==1.13.0
