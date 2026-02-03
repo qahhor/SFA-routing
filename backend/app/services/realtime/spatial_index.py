@@ -94,7 +94,7 @@ class H3SpatialIndex:
         Returns:
             H3 cell index
         """
-        cell = h3.geo_to_h3(entity.latitude, entity.longitude, self.resolution)
+        cell = h3.latlng_to_cell(entity.latitude, entity.longitude, self.resolution)
 
         # Remove from old cell if exists
         if entity.id in self._entity_cells:
@@ -125,7 +125,7 @@ class H3SpatialIndex:
 
     def get_cell(self, lat: float, lon: float) -> str:
         """Get H3 cell for coordinates."""
-        return h3.geo_to_h3(lat, lon, self.resolution)
+        return h3.latlng_to_cell(lat, lon, self.resolution)
 
     def query_cell(self, cell: str) -> list[SpatialEntity]:
         """Get all entities in a cell."""
@@ -152,12 +152,12 @@ class H3SpatialIndex:
 
         start = time.time()
 
-        center_cell = h3.geo_to_h3(lat, lon, self.resolution)
+        center_cell = h3.latlng_to_cell(lat, lon, self.resolution)
 
         if k_ring == 0:
             cells = {center_cell}
         else:
-            cells = h3.k_ring(center_cell, k_ring)
+            cells = h3.grid_disk(center_cell, k_ring)
 
         entities = []
         for cell in cells:
@@ -458,6 +458,8 @@ class FallbackSpatialIndex:
         radius_meters: float,
     ) -> list[SpatialEntity]:
         """Query entities within radius."""
+        from math import atan2, cos, radians, sin, sqrt
+
         # Approximate degrees for radius
         lat_range = radius_meters / 111000  # ~111km per degree
         lon_range = radius_meters / (111000 * abs(cos(radians(lat))) or 1)
@@ -472,7 +474,6 @@ class FallbackSpatialIndex:
                 candidates.extend(self._index.get(cell, []))
 
         # Filter by exact distance
-        from math import atan2, cos, radians, sin, sqrt
 
         R = 6371000
         filtered = []

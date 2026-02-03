@@ -13,7 +13,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4
 
-from app.services.spatial_index import (
+from app.services.realtime.spatial_index import (
     SpatialEntity,
     SpatialQueryResult,
     FallbackSpatialIndex,
@@ -126,9 +126,9 @@ class TestH3SpatialIndex:
     def test_h3_index_creation_without_h3(self):
         """Test that H3SpatialIndex raises error without h3 library."""
         # This test verifies the import check
-        with patch('app.services.spatial_index.H3_AVAILABLE', False):
+        with patch('app.services.realtime.spatial_index.H3_AVAILABLE', False):
             # Need to reimport to apply patch
-            from app.services.spatial_index import H3SpatialIndex
+            from app.services.realtime.spatial_index import H3SpatialIndex
             with pytest.raises(ImportError, match="H3 library required"):
                 H3SpatialIndex()
 
@@ -260,10 +260,10 @@ class TestCreateSpatialIndex:
 
     def test_creates_fallback_when_h3_unavailable(self):
         """Test factory creates fallback index when H3 not available."""
-        with patch('app.services.spatial_index.H3_AVAILABLE', False):
+        with patch('app.services.realtime.spatial_index.H3_AVAILABLE', False):
             # Reload module to apply patch
             from importlib import reload
-            import app.services.spatial_index as si
+            import app.services.realtime.spatial_index as si
             reload(si)
 
             index = si.create_spatial_index()
@@ -272,9 +272,9 @@ class TestCreateSpatialIndex:
 
     def test_factory_with_custom_resolution(self):
         """Test factory accepts resolution parameter."""
-        with patch('app.services.spatial_index.H3_AVAILABLE', False):
+        with patch('app.services.realtime.spatial_index.H3_AVAILABLE', False):
             from importlib import reload
-            import app.services.spatial_index as si
+            import app.services.realtime.spatial_index as si
             reload(si)
 
             index = si.create_spatial_index(resolution=7)

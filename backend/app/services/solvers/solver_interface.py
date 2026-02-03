@@ -27,6 +27,7 @@ class SolverType(str, Enum):
     VROOM = "vroom"
     ORTOOLS = "ortools"
     GREEDY = "greedy"
+    GENETIC = "genetic"
     AUTO = "auto"
 
 

@@ -92,7 +92,7 @@ services:
       - route-network
 
   osrm:
-    image: osrm/osrm-backend:latest
+    image: osrm/osrm-backend:v5.27.1  # Pinned version for reproducibility
     ports:
       - "5001:5000"
     volumes:

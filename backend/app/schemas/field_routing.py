@@ -2,7 +2,7 @@
 Schemas for Routing Services.
 
 Based on Google OR-Tools routing specification.
-TSP - Traveling Salesperson Problem
+TSP - Traveling Salesperson Problem (Salesperson Plan)
 VRPC - Vehicle Routing Problem with Capacity Constraints
 """
 
@@ -22,17 +22,16 @@ class TSPKind(str, Enum):
 
     AUTO = "auto"
     SINGLE = "single"
-    MANUAL = "manual"
 
 
-class VisitIntensity(str, Enum):
+class Intensity(str, Enum):
     """Intensity of visits at each point."""
 
-    THREE_TIMES_A_WEEK = "THREE_TIMES_A_WEEK"
-    TWICE_A_WEEK = "TWICE_A_WEEK"
-    ONCE_A_WEEK = "ONCE_A_WEEK"
-    TWICE_A_MONTH = "TWICE_A_MONTH"
-    ONCE_A_MONTH = "ONCE_A_MONTH"
+    THREE_TIMES_A_WEEK = "THREE_TIMES_A_WEEK"  # 3 visits/week (Mon, Wed, Fri)
+    TWO_TIMES_A_WEEK = "TWO_TIMES_A_WEEK"  # 2 visits/week (Mon, Thu)
+    ONCE_A_WEEK = "ONCE_A_WEEK"  # 1 visit/week
+    ONCE_IN_TWO_WEEKS = "ONCE_IN_TWO_WEEKS"  # 1 visit per 2 weeks
+    ONCE_A_MONTH = "ONCE_A_MONTH"  # 1 visit per month
 
 
 class VehicleType(str, Enum):
@@ -40,14 +39,6 @@ class VehicleType(str, Enum):
 
     CAR = "car"
     TRUCK = "truck"
-    WALKING = "walking"
-    CYCLING = "cycling"
-
-
-class Profile(str, Enum):
-    """Profile for OSRM routing."""
-
-    DRIVING = "driving"
     WALKING = "walking"
     CYCLING = "cycling"
 
@@ -60,70 +51,87 @@ class Profile(str, Enum):
 class TSPLocation(BaseModel):
     """Location for TSP service."""
 
-    lat: str = Field(..., description="Latitude with precision 6")
-    lng: str = Field(..., description="Longitude with precision 6")
-    visit_duration: int = Field(..., ge=0, description="Visit duration in seconds")
-    visit_intensity: VisitIntensity = Field(
-        ..., description="Intensity of visits at this point"
+    id: str = Field(
+        ..., min_length=1, description="Unique location identifier"
+    )
+    latitude: float = Field(..., ge=-90, le=90, description="Latitude")
+    longitude: float = Field(..., ge=-180, le=180, description="Longitude")
+    intensity: Intensity = Field(..., description="Visit intensity")
+    visitDuration: int = Field(
+        ..., ge=0, description="Visit duration in minutes"
+    )
+    workingDays: list[int] = Field(
+        default=[1, 2, 3, 4, 5, 6],
+        description="Working days (1=Mon, 6=Sat)",
     )
 
-    @field_validator("lat", "lng")
+    @field_validator("workingDays")
     @classmethod
-    def validate_coordinate(cls, v: str) -> str:
-        """Validate coordinate format."""
-        try:
-            float(v)
-        except ValueError:
-            raise ValueError("Coordinate must be a valid number string")
+    def validate_working_days(cls, v: list[int]) -> list[int]:
+        """Validate working days are 1-6."""
+        for day in v:
+            if day < 1 or day > 6:
+                raise ValueError("Working days must be between 1 and 6")
         return v
 
 
-class TSPData(BaseModel):
-    """Data for TSP service (auto and single kinds)."""
+class StartLocation(BaseModel):
+    """Start location (depot) for TSP."""
 
-    locations: list[TSPLocation] = Field(
-        ..., min_length=1, description="List of points to visit"
-    )
-    map_url: str = Field(..., description="URL of OSRM server for distance matrix")
-    profile: Profile = Field(..., description="Vehicle profile for routing")
-    max_visit_limit_per_day: int = Field(
-        ..., ge=1, le=50, description="Maximum points per day"
-    )
-    working_seconds_per_day: int = Field(
-        ..., ge=3600, le=86400, description="Working hours in seconds"
-    )
+    latitude: float = Field(..., ge=-90, le=90, description="Latitude")
+    longitude: float = Field(..., ge=-180, le=180, description="Longitude")
 
 
 class TSPRequest(BaseModel):
     """Request for TSP service."""
 
-    kind: TSPKind = Field(..., description="Kind of service: auto, single, or manual")
-    data: TSPData = Field(..., description="Data for the service")
-
-
-class TSPAutoResponse(BaseModel):
-    """Response for TSP auto kind."""
-
-    code: int = Field(..., description="Result code. 100 = success")
-    plans: Optional[list[list[list[list[int]]]]] = Field(
-        None,
-        description="List of plans. Each plan contains 4 weeks of daily routes",
+    kind: TSPKind = Field(..., description="Kind of service: auto or single")
+    locations: list[TSPLocation] = Field(
+        ..., min_length=1, description="Locations to visit"
     )
-    error_text: Optional[str] = Field(
-        None, description="Error description if code != 100"
+    startLocation: Optional[StartLocation] = Field(
+        None, description="Start location (depot)"
     )
+
+
+class DayRoute(BaseModel):
+    """Route for a single day."""
+
+    dayNumber: int = Field(..., ge=1, le=6, description="Day number (1-6)")
+    route: list[str] = Field(
+        ..., description="List of location IDs in visit order"
+    )
+    totalDuration: int = Field(
+        ..., ge=0, description="Total duration in minutes"
+    )
+    totalDistance: float = Field(..., ge=0, description="Total distance in km")
+
+
+class WeekPlan(BaseModel):
+    """Plan for a single week."""
+
+    weekNumber: int = Field(..., ge=1, le=4, description="Week number (1-4)")
+    days: list[DayRoute] = Field(..., description="Daily routes")
 
 
 class TSPSingleResponse(BaseModel):
     """Response for TSP single kind."""
 
     code: int = Field(..., description="Result code. 100 = success")
-    routes: Optional[list[list[list[int]]]] = Field(
-        None,
-        description="Routes for 4 weeks. Each week has daily routes with location indexes",
+    weeks: Optional[list[WeekPlan]] = Field(
+        None, description="4-week plan with daily routes"
     )
-    ignored_locations: Optional[list[int]] = Field(
-        None, description="Indexes of locations that couldn't be scheduled"
+    error_text: Optional[str] = Field(
+        None, description="Error description if code != 100"
+    )
+
+
+class TSPAutoResponse(BaseModel):
+    """Response for TSP auto kind (multiple plans from clustering)."""
+
+    code: int = Field(..., description="Result code. 100 = success")
+    plans: Optional[list[list[WeekPlan]]] = Field(
+        None, description="Multiple plans (one per cluster)"
     )
     error_text: Optional[str] = Field(
         None, description="Error description if code != 100"
@@ -189,8 +197,12 @@ class VRPCUrls(BaseModel):
 class VRPCRequest(BaseModel):
     """Request for VRPC service."""
 
-    depot: VRPCDepot = Field(..., description="Start/end location for vehicles")
-    points: list[VRPCPoint] = Field(..., min_length=1, description="Delivery points")
+    depot: VRPCDepot = Field(
+        ..., description="Start/end location for vehicles"
+    )
+    points: list[VRPCPoint] = Field(
+        ..., min_length=1, description="Delivery points"
+    )
     vehicles: list[VRPCVehicle] = Field(
         ..., min_length=1, description="Available vehicles"
     )
@@ -201,7 +213,7 @@ class VRPCRequest(BaseModel):
         30,
         ge=1,
         le=100,
-        description="Balance between min total distance and min overall time (1-100)",
+        description="Balance distance vs time (1-100)",
     )
     urls: VRPCUrls = Field(..., description="OSRM URLs for vehicle types")
 

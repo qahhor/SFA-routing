@@ -1,5 +1,7 @@
 """
 Security utilities for authentication and authorization.
+
+Uses bcrypt directly instead of passlib (deprecated/unmaintained).
 """
 
 import secrets
@@ -7,10 +9,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +20,6 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User, UserRole
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security_scheme = HTTPBearer(auto_error=False)
 
 
@@ -26,13 +27,18 @@ security_scheme = HTTPBearer(auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a password against its hash using bcrypt."""
+    password_bytes = plain_password.encode("utf-8")
+    hash_bytes = hashed_password.encode("utf-8")
+    return bcrypt.checkpw(password_bytes, hash_bytes)
 
 
 def get_password_hash(password: str) -> str:
-    """Generate password hash."""
-    return pwd_context.hash(password)
+    """Generate password hash using bcrypt."""
+    password_bytes = password.encode("utf-8")
+    salt = bcrypt.gensalt(rounds=12)
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode("utf-8")
 
 
 # ============== Token Utilities ==============

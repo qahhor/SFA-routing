@@ -1,29 +1,89 @@
 """
 Routing Services based on Google OR-Tools.
 
-TSP - Traveling Salesperson Problem for salesperson route planning.
-VRPC - Vehicle Routing Problem with Capacity Constraints.
+TSP - Traveling Salesperson Problem (Salesperson Plan)
+VRPC - Vehicle Routing Problem with Capacity Constraints
 """
 
 import logging
+import math
 from typing import Optional
 
 import httpx
 
 from app.schemas.field_routing import (
+    DayRoute,
     ErrorCode,
+    Intensity,
     TSPAutoResponse,
-    TSPData,
     TSPKind,
+    TSPLocation,
     TSPRequest,
     TSPSingleResponse,
-    VisitIntensity,
     VRPCLoop,
     VRPCRequest,
     VRPCResponse,
+    WeekPlan,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# Constants
+# ============================================================
+
+# Intensity coefficients (visits per week)
+INTENSITY_COEFFICIENT = {
+    Intensity.THREE_TIMES_A_WEEK: 3.0,
+    Intensity.TWO_TIMES_A_WEEK: 2.0,
+    Intensity.ONCE_A_WEEK: 1.0,
+    Intensity.ONCE_IN_TWO_WEEKS: 0.5,
+    Intensity.ONCE_A_MONTH: 0.25,
+}
+
+# Days pattern for each intensity
+INTENSITY_DAYS = {
+    Intensity.THREE_TIMES_A_WEEK: [1, 3, 5],  # Mon, Wed, Fri
+    Intensity.TWO_TIMES_A_WEEK: [1, 4],  # Mon, Thu
+    Intensity.ONCE_A_WEEK: [1],  # Mon
+    Intensity.ONCE_IN_TWO_WEEKS: [1],  # Mon (every 2 weeks)
+    Intensity.ONCE_A_MONTH: [1],  # Mon (every 4 weeks)
+}
+
+# Planning constants
+WEEKS = 4
+DAYS_PER_WEEK = 6
+WORKING_MINUTES_PER_DAY = 480  # 8 hours
+
+
+# ============================================================
+# Haversine Distance Calculation
+# ============================================================
+
+
+def haversine_distance(
+    lat1: float, lon1: float, lat2: float, lon2: float
+) -> float:
+    """
+    Calculate distance between two points using Haversine formula.
+
+    Returns:
+        Distance in kilometers
+    """
+    R = 6371  # Earth radius in km
+
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
+
+    sin_dlat = math.sin(delta_lat / 2) ** 2
+    sin_dlon = math.sin(delta_lon / 2) ** 2
+    a = sin_dlat + math.cos(lat1_rad) * math.cos(lat2_rad) * sin_dlon
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return R * c
 
 
 # ============================================================
@@ -34,13 +94,13 @@ logger = logging.getLogger(__name__)
 class OSRMClient:
     """Client for OSRM distance matrix API."""
 
-    def __init__(self, timeout: float = 30.0):
+    def __init__(self, base_url: str = "", timeout: float = 30.0):
+        self.base_url = base_url
         self.timeout = timeout
 
     async def get_distance_matrix(
         self,
         coordinates: list[tuple[float, float]],
-        map_url: str,
         profile: str = "driving",
     ) -> tuple[Optional[list[list[float]]], Optional[list[list[float]]]]:
         """
@@ -48,19 +108,17 @@ class OSRMClient:
 
         Args:
             coordinates: List of (lat, lng) tuples
-            map_url: OSRM server URL
-            profile: Routing profile (driving, walking, cycling)
+            profile: Routing profile
 
         Returns:
-            Tuple of (durations matrix, distances matrix) or (None, None) on error
+            Tuple of (durations in seconds, distances in meters)
         """
-        if len(coordinates) < 2:
+        if not self.base_url or len(coordinates) < 2:
             return None, None
 
         # Build coordinates string (lng,lat format for OSRM)
         coords_str = ";".join(f"{lng},{lat}" for lat, lng in coordinates)
-
-        url = f"{map_url}/table/v1/{profile}/{coords_str}"
+        url = f"{self.base_url}/table/v1/{profile}/{coords_str}"
         params = {"annotations": "duration,distance"}
 
         try:
@@ -70,294 +128,361 @@ class OSRMClient:
                 data = response.json()
 
                 if data.get("code") != "Ok":
-                    logger.error(f"OSRM error: {data.get('message', 'Unknown error')}")
                     return None, None
 
                 return data.get("durations"), data.get("distances")
 
-        except httpx.ConnectError as e:
-            logger.error(f"OSRM connection error: {e}")
-            return None, None
-        except httpx.HTTPStatusError as e:
-            logger.error(f"OSRM HTTP error: {e}")
-            return None, None
         except Exception as e:
-            logger.error(f"OSRM unexpected error: {e}")
+            logger.error(f"OSRM error: {e}")
             return None, None
 
 
 # ============================================================
-# TSP Service (Traveling Salesperson Problem)
+# TSP Service - Single Plan Solver
 # ============================================================
 
 
-class TSPService:
+class SinglePlanSolver:
     """
-    Traveling Salesperson Problem service.
+    Single plan solver for TSP.
 
-    Generates routes for a salesperson visiting multiple points
-    over 4 weeks, considering visit intensity and constraints.
+    Generates a 4-week route plan for a salesperson.
     """
-
-    # Days per week for planning
-    DAYS_PER_WEEK = 6  # Working days (Mon-Sat)
-    WEEKS = 4  # Planning horizon
-
-    # Visit frequency mapping (visits per 4 weeks)
-    INTENSITY_TO_VISITS = {
-        VisitIntensity.THREE_TIMES_A_WEEK: 12,  # 3 * 4 weeks
-        VisitIntensity.TWICE_A_WEEK: 8,  # 2 * 4 weeks
-        VisitIntensity.ONCE_A_WEEK: 4,  # 1 * 4 weeks
-        VisitIntensity.TWICE_A_MONTH: 2,  # 2 per month
-        VisitIntensity.ONCE_A_MONTH: 1,  # 1 per month
-    }
 
     def __init__(self, osrm_client: Optional[OSRMClient] = None):
-        self.osrm = osrm_client or OSRMClient()
+        self.osrm = osrm_client
 
-    async def solve(self, request: TSPRequest) -> TSPAutoResponse | TSPSingleResponse:
-        """
-        Solve TSP problem.
-
-        Args:
-            request: TSP request with kind and data
-
-        Returns:
-            TSPAutoResponse or TSPSingleResponse based on kind
-        """
-        if request.kind == TSPKind.MANUAL:
-            return TSPSingleResponse(
-                code=ErrorCode.INVALID_INPUT_FORMAT,
-                error_text="Manual kind is not implemented",
-            )
-
+    async def solve(self, request: TSPRequest) -> TSPSingleResponse:
+        """Solve TSP and return a single 4-week plan."""
         try:
-            # Get distance matrix from OSRM
-            coordinates = [
-                (float(loc.lat), float(loc.lng)) for loc in request.data.locations
-            ]
+            locations = request.locations
+            start_loc = request.startLocation
 
-            durations, distances = await self.osrm.get_distance_matrix(
-                coordinates=coordinates,
-                map_url=request.data.map_url,
-                profile=request.data.profile.value,
-            )
-
-            if durations is None:
-                return self._error_response(
-                    request.kind,
-                    ErrorCode.OSRM_CONNECTION_ERROR,
-                    "Failed to connect to OSRM server",
+            if not locations:
+                return TSPSingleResponse(
+                    code=ErrorCode.INVALID_INPUT_FORMAT,
+                    error_text="No locations provided",
                 )
 
-            # Build visit requirements based on intensity
-            visit_requirements = self._build_visit_requirements(request.data)
+            # Build distance matrix using Haversine (OSRM fallback)
+            distance_matrix = self._build_distance_matrix(locations, start_loc)
 
-            # Solve the problem
-            if request.kind == TSPKind.AUTO:
-                return await self._solve_auto(request.data, durations, visit_requirements)
-            else:  # SINGLE
-                return await self._solve_single(request.data, durations, visit_requirements)
+            # Calculate required visits per location for 4 weeks
+            visit_requirements = self._calculate_visit_requirements(locations)
+
+            # Generate 4-week plan
+            weeks = self._generate_plan(
+                locations, distance_matrix, visit_requirements, start_loc
+            )
+
+            return TSPSingleResponse(code=ErrorCode.SUCCESS, weeks=weeks)
 
         except MemoryError:
-            return self._error_response(
-                request.kind, ErrorCode.OUT_OF_MEMORY, "Out of memory"
+            return TSPSingleResponse(
+                code=ErrorCode.OUT_OF_MEMORY, error_text="Out of memory"
             )
         except Exception as e:
-            logger.exception(f"TSP solver error: {e}")
-            return self._error_response(
-                request.kind, ErrorCode.UNEXPECTED_ERROR, str(e)
+            logger.exception(f"SinglePlanSolver error: {e}")
+            return TSPSingleResponse(
+                code=ErrorCode.UNEXPECTED_ERROR, error_text=str(e)
             )
 
-    def _build_visit_requirements(self, data: TSPData) -> list[int]:
-        """Build list of required visits per location for 4 weeks."""
-        return [
-            self.INTENSITY_TO_VISITS.get(loc.visit_intensity, 1)
-            for loc in data.locations
-        ]
-
-    async def _solve_auto(
+    def _build_distance_matrix(
         self,
-        data: TSPData,
-        durations: list[list[float]],
-        visit_requirements: list[int],
-    ) -> TSPAutoResponse:
-        """
-        Solve TSP with auto mode - generate multiple optimal plans.
-        """
+        locations: list[TSPLocation],
+        start_loc: Optional[object],
+    ) -> list[list[float]]:
+        """Build distance matrix using Haversine formula."""
+        # Include start location if provided
+        all_coords = []
+        if start_loc:
+            all_coords.append((start_loc.latitude, start_loc.longitude))
+        for loc in locations:
+            all_coords.append((loc.latitude, loc.longitude))
+
+        n = len(all_coords)
+        matrix = [[0.0] * n for _ in range(n)]
+
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    matrix[i][j] = haversine_distance(
+                        all_coords[i][0],
+                        all_coords[i][1],
+                        all_coords[j][0],
+                        all_coords[j][1],
+                    )
+
+        return matrix
+
+    def _calculate_visit_requirements(
+        self, locations: list[TSPLocation]
+    ) -> dict[str, int]:
+        """Calculate required visits per location for 4 weeks."""
+        requirements = {}
+        for loc in locations:
+            coefficient = INTENSITY_COEFFICIENT.get(loc.intensity, 1.0)
+            total_visits = int(coefficient * WEEKS)
+            requirements[loc.id] = max(1, total_visits)
+        return requirements
+
+    def _generate_plan(
+        self,
+        locations: list[TSPLocation],
+        distance_matrix: list[list[float]],
+        visit_requirements: dict[str, int],
+        start_loc: Optional[object],
+    ) -> list[WeekPlan]:
+        """Generate 4-week plan using greedy algorithm."""
+        # Create location lookup
+        loc_by_id = {loc.id: loc for loc in locations}
+        loc_ids = [loc.id for loc in locations]
+
+        # Track remaining visits needed
+        remaining_visits = visit_requirements.copy()
+
+        # Track which locations were visited on which days
+        weeks: list[WeekPlan] = []
+
+        # Index offset for distance matrix (if start_loc is included)
+        offset = 1 if start_loc else 0
+
+        for week_num in range(1, WEEKS + 1):
+            days: list[DayRoute] = []
+
+            for day_num in range(1, DAYS_PER_WEEK + 1):
+                day_route: list[str] = []
+                day_duration = 0
+                day_distance = 0.0
+
+                # Find locations that need visits and can be visited today
+                candidates = []
+                for loc_id, remaining in remaining_visits.items():
+                    if remaining <= 0:
+                        continue
+
+                    loc = loc_by_id[loc_id]
+
+                    # Check if this day is in location's working days
+                    if day_num not in loc.workingDays:
+                        continue
+
+                    # Check intensity pattern
+                    intensity_days = INTENSITY_DAYS.get(loc.intensity, [1])
+                    if loc.intensity in [
+                        Intensity.THREE_TIMES_A_WEEK,
+                        Intensity.TWO_TIMES_A_WEEK,
+                        Intensity.ONCE_A_WEEK,
+                    ]:
+                        if day_num not in intensity_days:
+                            continue
+                    elif loc.intensity == Intensity.ONCE_IN_TWO_WEEKS:
+                        if week_num % 2 != 1 or day_num != 1:
+                            continue
+                    elif loc.intensity == Intensity.ONCE_A_MONTH:
+                        if week_num != 1 or day_num != 1:
+                            continue
+
+                    candidates.append(loc_id)
+
+                # Greedy nearest neighbor
+                current_idx = 0  # Start from depot/first location
+                available_time = WORKING_MINUTES_PER_DAY
+
+                while candidates and available_time > 0:
+                    # Find nearest candidate
+                    best_loc_id = None
+                    best_distance = float("inf")
+                    best_idx = -1
+
+                    for loc_id in candidates:
+                        loc_idx = loc_ids.index(loc_id) + offset
+                        dist = distance_matrix[current_idx][loc_idx]
+
+                        if dist < best_distance:
+                            best_distance = dist
+                            best_loc_id = loc_id
+                            best_idx = loc_idx
+
+                    if best_loc_id is None:
+                        break
+
+                    loc = loc_by_id[best_loc_id]
+
+                    # Check time constraint
+                    travel_time = int(best_distance / 0.5)  # ~30 km/h average
+                    total_time = travel_time + loc.visitDuration
+
+                    if total_time > available_time:
+                        # Skip this location - not enough time
+                        candidates.remove(best_loc_id)
+                        continue
+
+                    # Add to route
+                    day_route.append(best_loc_id)
+                    day_duration += total_time
+                    day_distance += best_distance
+                    available_time -= total_time
+
+                    remaining_visits[best_loc_id] -= 1
+                    candidates.remove(best_loc_id)
+                    current_idx = best_idx
+
+                if day_route:
+                    days.append(
+                        DayRoute(
+                            dayNumber=day_num,
+                            route=day_route,
+                            totalDuration=day_duration,
+                            totalDistance=round(day_distance, 2),
+                        )
+                    )
+
+            weeks.append(WeekPlan(weekNumber=week_num, days=days))
+
+        return weeks
+
+
+# ============================================================
+# TSP Service - Auto Plan Solver (Clustering)
+# ============================================================
+
+
+class AutoPlanSolver:
+    """
+    Auto plan solver with clustering.
+
+    Clusters locations geographically and generates
+    separate plans for each cluster.
+    """
+
+    def __init__(self, osrm_client: Optional[OSRMClient] = None):
+        self.osrm = osrm_client
+        self.single_solver = SinglePlanSolver(osrm_client)
+
+    async def solve(self, request: TSPRequest) -> TSPAutoResponse:
+        """Solve TSP with automatic clustering."""
         try:
-            # Generate multiple plans with different starting strategies
-            plans = []
+            locations = request.locations
 
-            # Plan 1: Standard greedy approach
-            plan1 = self._generate_plan(data, durations, visit_requirements, seed=0)
-            if plan1:
-                plans.append(plan1)
+            if not locations:
+                return TSPAutoResponse(
+                    code=ErrorCode.INVALID_INPUT_FORMAT,
+                    error_text="No locations provided",
+                )
 
-            # Plan 2: Reversed order
-            plan2 = self._generate_plan(data, durations, visit_requirements, seed=1)
-            if plan2 and plan2 != plan1:
-                plans.append(plan2)
+            # Cluster locations
+            clusters = self._cluster_locations(locations)
 
-            # Plan 3: Random shuffle (if enough locations)
-            if len(data.locations) > 5:
-                plan3 = self._generate_plan(data, durations, visit_requirements, seed=42)
-                if plan3 and plan3 not in plans:
-                    plans.append(plan3)
+            if not clusters:
+                return TSPAutoResponse(
+                    code=ErrorCode.NO_SOLUTION_FOUND,
+                    error_text="Could not create clusters",
+                )
+
+            # Solve each cluster
+            plans: list[list[WeekPlan]] = []
+
+            for cluster_locations in clusters:
+                cluster_request = TSPRequest(
+                    kind=TSPKind.SINGLE,
+                    locations=cluster_locations,
+                    startLocation=request.startLocation,
+                )
+
+                result = await self.single_solver.solve(cluster_request)
+
+                if result.code == ErrorCode.SUCCESS and result.weeks:
+                    plans.append(result.weeks)
 
             if not plans:
                 return TSPAutoResponse(
                     code=ErrorCode.NO_SOLUTION_FOUND,
-                    error_text="No solution found to the problem",
+                    error_text="No solution found for any cluster",
                 )
 
             return TSPAutoResponse(code=ErrorCode.SUCCESS, plans=plans)
 
+        except MemoryError:
+            return TSPAutoResponse(
+                code=ErrorCode.OUT_OF_MEMORY, error_text="Out of memory"
+            )
         except Exception as e:
-            logger.exception(f"TSP auto solve error: {e}")
+            logger.exception(f"AutoPlanSolver error: {e}")
             return TSPAutoResponse(
                 code=ErrorCode.UNEXPECTED_ERROR, error_text=str(e)
             )
 
-    async def _solve_single(
+    def _cluster_locations(
         self,
-        data: TSPData,
-        durations: list[list[float]],
-        visit_requirements: list[int],
-    ) -> TSPSingleResponse:
+        locations: list[TSPLocation],
+        max_cluster_size: int = 50,
+    ) -> list[list[TSPLocation]]:
         """
-        Solve TSP with single mode - generate one optimal plan.
+        Cluster locations using geographic proximity.
+
+        Algorithm:
+        1. Find the leftmost (min longitude) location
+        2. Iteratively add nearest locations until cluster is full
+        3. Repeat for remaining locations
         """
-        try:
-            routes = self._generate_plan(data, durations, visit_requirements, seed=0)
+        if len(locations) <= max_cluster_size:
+            return [locations]
 
-            if not routes:
-                return TSPSingleResponse(
-                    code=ErrorCode.NO_SOLUTION_FOUND,
-                    error_text="No solution found to the problem",
-                )
+        remaining = list(locations)
+        clusters: list[list[TSPLocation]] = []
 
-            # Find ignored locations (those not visited enough times)
-            visited_counts = [0] * len(data.locations)
-            for week in routes:
-                for day in week:
-                    for loc_idx in day:
-                        if 0 <= loc_idx < len(visited_counts):
-                            visited_counts[loc_idx] += 1
+        while remaining:
+            # Find leftmost location (min longitude)
+            leftmost = min(remaining, key=lambda loc: loc.longitude)
+            cluster = [leftmost]
+            remaining.remove(leftmost)
 
-            ignored_locations = [
-                i
-                for i, (visited, required) in enumerate(
-                    zip(visited_counts, visit_requirements)
-                )
-                if visited < required
-            ]
+            # Add nearest locations until cluster is full
+            while remaining and len(cluster) < max_cluster_size:
+                last = cluster[-1]
 
+                # Find nearest to last added
+                def dist_to_last(loc):
+                    return haversine_distance(
+                        last.latitude, last.longitude,
+                        loc.latitude, loc.longitude
+                    )
+                nearest = min(remaining, key=dist_to_last)
+
+                cluster.append(nearest)
+                remaining.remove(nearest)
+
+            clusters.append(cluster)
+
+        return clusters
+
+
+# ============================================================
+# TSP Service (Main Entry Point)
+# ============================================================
+
+
+class TSPService:
+    """Main TSP service that routes to appropriate solver."""
+
+    def __init__(self, osrm_client: Optional[OSRMClient] = None):
+        self.single_solver = SinglePlanSolver(osrm_client)
+        self.auto_solver = AutoPlanSolver(osrm_client)
+
+    async def solve(
+        self, request: TSPRequest
+    ) -> TSPSingleResponse | TSPAutoResponse:
+        """Solve TSP based on request kind."""
+        if request.kind == TSPKind.SINGLE:
+            return await self.single_solver.solve(request)
+        elif request.kind == TSPKind.AUTO:
+            return await self.auto_solver.solve(request)
+        else:
             return TSPSingleResponse(
-                code=ErrorCode.SUCCESS,
-                routes=routes,
-                ignored_locations=ignored_locations if ignored_locations else None,
+                code=ErrorCode.INVALID_INPUT_FORMAT,
+                error_text=f"Unknown kind: {request.kind}",
             )
-
-        except Exception as e:
-            logger.exception(f"TSP single solve error: {e}")
-            return TSPSingleResponse(
-                code=ErrorCode.UNEXPECTED_ERROR, error_text=str(e)
-            )
-
-    def _generate_plan(
-        self,
-        data: TSPData,
-        durations: list[list[float]],
-        visit_requirements: list[int],
-        seed: int = 0,
-    ) -> Optional[list[list[list[int]]]]:
-        """
-        Generate a 4-week plan using greedy nearest neighbor heuristic.
-
-        Returns:
-            4 weeks of daily routes, each as list of location indexes
-        """
-        max_per_day = data.max_visit_limit_per_day
-        working_seconds = data.working_seconds_per_day
-
-        # Track remaining visits needed for each location
-        remaining_visits = visit_requirements.copy()
-
-        # Calculate service time per location
-        service_times = [loc.visit_duration for loc in data.locations]
-
-        # Generate route for 4 weeks
-        weeks: list[list[list[int]]] = []
-
-        for week_num in range(self.WEEKS):
-            week_routes: list[list[int]] = []
-
-            for day_num in range(self.DAYS_PER_WEEK):
-                day_route: list[int] = []
-                day_time = 0.0
-                current_location = -1  # Start from depot (virtual)
-
-                # Find locations that need visits
-                candidates = [
-                    i for i, r in enumerate(remaining_visits) if r > 0
-                ]
-
-                if not candidates:
-                    week_routes.append([])
-                    continue
-
-                # Shuffle candidates based on seed for variety
-                if seed > 0:
-                    import random
-                    random.seed(seed + week_num * 10 + day_num)
-                    random.shuffle(candidates)
-
-                while len(day_route) < max_per_day and candidates:
-                    # Find nearest unvisited location
-                    best_idx = None
-                    best_time = float("inf")
-
-                    for idx in candidates:
-                        if current_location < 0:
-                            travel_time = 0  # First location
-                        else:
-                            travel_time = durations[current_location][idx]
-
-                        total_time = day_time + travel_time + service_times[idx]
-
-                        if total_time <= working_seconds and travel_time < best_time:
-                            best_time = travel_time
-                            best_idx = idx
-
-                    if best_idx is None:
-                        break
-
-                    # Add to route
-                    day_route.append(best_idx)
-                    if current_location >= 0:
-                        day_time += durations[current_location][best_idx]
-                    day_time += service_times[best_idx]
-                    current_location = best_idx
-
-                    # Update remaining visits
-                    remaining_visits[best_idx] -= 1
-                    if remaining_visits[best_idx] <= 0:
-                        candidates.remove(best_idx)
-
-                week_routes.append(day_route)
-
-            weeks.append(week_routes)
-
-        return weeks if any(any(day for day in week) for week in weeks) else None
-
-    def _error_response(
-        self, kind: TSPKind, code: int, message: str
-    ) -> TSPAutoResponse | TSPSingleResponse:
-        """Create error response based on kind."""
-        if kind == TSPKind.AUTO:
-            return TSPAutoResponse(code=code, error_text=message)
-        return TSPSingleResponse(code=code, error_text=message)
 
 
 # ============================================================
@@ -366,95 +491,68 @@ class TSPService:
 
 
 class VRPCService:
-    """
-    Vehicle Routing Problem with Capacity Constraints service.
-
-    Handles multi-vehicle delivery scenarios with:
-    - Vehicle capacity constraints
-    - Multiple vehicle types
-    - Depot start/end location
-    """
+    """Vehicle Routing Problem with Capacity Constraints."""
 
     def __init__(self, osrm_client: Optional[OSRMClient] = None):
         self.osrm = osrm_client or OSRMClient()
 
     async def solve(self, request: VRPCRequest) -> VRPCResponse:
-        """
-        Solve VRPC problem.
-
-        Args:
-            request: VRPC request with depot, points, and vehicles
-
-        Returns:
-            VRPCResponse with routes per vehicle
-        """
+        """Solve VRPC problem."""
         try:
-            # Validate vehicle types have URLs
+            # Validate vehicle URLs
             for vehicle in request.vehicles:
                 url = getattr(request.urls, vehicle.type.value, None)
                 if not url:
+                    vtype = vehicle.type.value
                     return VRPCResponse(
                         code=ErrorCode.URL_NOT_FOUND_FOR_VEHICLE,
-                        error_text=f"URL not found for vehicle type: {vehicle.type.value}",
+                        error_text=f"URL not found for vehicle type: {vtype}",
                     )
 
-            # Check capacity constraints
+            # Check capacity
             total_weight = sum(p.weight for p in request.points)
             total_capacity = sum(v.capacity for v in request.vehicles)
 
             if total_weight > total_capacity:
+                msg = f"Weight ({total_weight}) > capacity ({total_capacity})"
                 return VRPCResponse(
                     code=ErrorCode.WEIGHT_EXCEEDS_CAPACITY,
-                    error_text=f"Total weight ({total_weight}) exceeds total capacity ({total_capacity})",
+                    error_text=msg,
                 )
 
-            # Build coordinates list (depot + points)
-            depot_coord = (float(request.depot.lat), float(request.depot.lng))
-            point_coords = [(float(p.lat), float(p.lng)) for p in request.points]
-            all_coords = [depot_coord] + point_coords
+            # Build distance matrix using Haversine
+            depot = (float(request.depot.lat), float(request.depot.lng))
+            points = [(float(p.lat), float(p.lng)) for p in request.points]
+            all_coords = [depot] + points
 
-            # Get distance matrix for first vehicle type (as baseline)
-            first_vehicle_type = request.vehicles[0].type.value
-            map_url = getattr(request.urls, first_vehicle_type)
+            n = len(all_coords)
+            distances = [[0.0] * n for _ in range(n)]
+            durations = [[0.0] * n for _ in range(n)]
 
-            durations, distances = await self.osrm.get_distance_matrix(
-                coordinates=all_coords,
-                map_url=map_url,
-                profile=self._type_to_profile(first_vehicle_type),
-            )
+            for i in range(n):
+                for j in range(n):
+                    if i != j:
+                        dist = haversine_distance(
+                            all_coords[i][0],
+                            all_coords[i][1],
+                            all_coords[j][0],
+                            all_coords[j][1],
+                        )
+                        distances[i][j] = dist * 1000  # km to m
+                        durations[i][j] = dist / 30 * 3600  # 30 km/h
 
-            if durations is None or distances is None:
-                return VRPCResponse(
-                    code=ErrorCode.OSRM_CONNECTION_ERROR,
-                    error_text="Failed to get distance matrix from OSRM",
-                )
-
-            # Solve using greedy algorithm
-            solution = self._solve_greedy(
-                request=request,
-                durations=durations,
-                distances=distances,
-            )
-
-            return solution
+            # Solve using greedy
+            return self._solve_greedy(request, durations, distances)
 
         except MemoryError:
             return VRPCResponse(
                 code=ErrorCode.OUT_OF_MEMORY, error_text="Out of memory"
             )
         except Exception as e:
-            logger.exception(f"VRPC solver error: {e}")
-            return VRPCResponse(code=ErrorCode.UNEXPECTED_ERROR, error_text=str(e))
-
-    def _type_to_profile(self, vehicle_type: str) -> str:
-        """Convert vehicle type to OSRM profile."""
-        mapping = {
-            "car": "driving",
-            "truck": "driving",
-            "walking": "walking",
-            "cycling": "cycling",
-        }
-        return mapping.get(vehicle_type, "driving")
+            logger.exception(f"VRPC error: {e}")
+            return VRPCResponse(
+                code=ErrorCode.UNEXPECTED_ERROR, error_text=str(e)
+            )
 
     def _solve_greedy(
         self,
@@ -462,16 +560,11 @@ class VRPCService:
         durations: list[list[float]],
         distances: list[list[float]],
     ) -> VRPCResponse:
-        """
-        Solve VRPC using greedy nearest neighbor algorithm.
-
-        Depot is at index 0, points are at indexes 1 to N.
-        """
+        """Solve VRPC using greedy algorithm."""
         num_points = len(request.points)
         max_distance = request.max_cycle_distance or float("inf")
 
-        # Track which points are assigned
-        unassigned = set(range(1, num_points + 1))  # 1-indexed (0 is depot)
+        unassigned = set(range(1, num_points + 1))
         point_weights = {i + 1: p.weight for i, p in enumerate(request.points)}
 
         vehicle_routes: list[list[VRPCLoop]] = []
@@ -483,48 +576,41 @@ class VRPCService:
             remaining_capacity = vehicle.capacity
 
             while unassigned:
-                # Start a new loop from depot
                 loop_route: list[int] = []
                 loop_distance = 0.0
                 loop_duration = 0.0
-                current = 0  # Start at depot
+                current = 0
                 loop_capacity = remaining_capacity
 
                 while True:
-                    # Find nearest feasible point
                     best_point = None
-                    best_distance = float("inf")
+                    best_dist = float("inf")
 
                     for point in unassigned:
                         weight = point_weights[point]
-
-                        # Check capacity
                         if weight > loop_capacity:
                             continue
 
-                        # Check distance constraint
-                        dist_to_point = distances[current][point]
-                        dist_back = distances[point][0]  # Return to depot
+                        dist_to = distances[current][point]
+                        dist_back = distances[point][0]
 
-                        if loop_distance + dist_to_point + dist_back > max_distance:
+                        if loop_distance + dist_to + dist_back > max_distance:
                             continue
 
-                        if dist_to_point < best_distance:
-                            best_distance = dist_to_point
+                        if dist_to < best_dist:
+                            best_dist = dist_to
                             best_point = point
 
                     if best_point is None:
                         break
 
-                    # Add point to loop
-                    loop_route.append(best_point - 1)  # Convert to 0-indexed for output
+                    loop_route.append(best_point - 1)
                     loop_distance += distances[current][best_point]
                     loop_duration += durations[current][best_point]
                     loop_capacity -= point_weights[best_point]
                     current = best_point
                     unassigned.remove(best_point)
 
-                # Return to depot
                 if loop_route:
                     loop_distance += distances[current][0]
                     loop_duration += durations[current][0]
@@ -539,11 +625,8 @@ class VRPCService:
 
                     total_distance += loop_distance
                     total_duration += loop_duration
-
-                    # Update remaining capacity for next loop
                     remaining_capacity = vehicle.capacity
                 else:
-                    # No more points can be assigned to this vehicle
                     break
 
             vehicle_routes.append(loops)
@@ -551,11 +634,10 @@ class VRPCService:
             if not unassigned:
                 break
 
-        # Check if all points were assigned
         if unassigned:
             return VRPCResponse(
                 code=ErrorCode.NO_SOLUTION_FOUND,
-                error_text=f"Could not assign all points. {len(unassigned)} points remaining.",
+                error_text=f"Could not assign {len(unassigned)} points",
             )
 
         return VRPCResponse(
