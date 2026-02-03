@@ -133,6 +133,6 @@ result = client.bulk.import_orders(orders, idempotency_key="key")
 
 ## 🔗 Полезные ссылки
 
-- [API Documentation](http://localhost:8000/docs) - Swagger UI
+- [API Documentation](http://localhost:8000/api/v1/docs) - Swagger UI
 - [CLAUDE.md](../CLAUDE.md) - Полная документация проекта
-- [QUICKSTART.md](../docs/QUICKSTART.md) - Быстрый старт
+- [API Reference](../docs/API_REFERENCE.md) - Справочник API

@@ -70,14 +70,7 @@ find . -type f -name "*~" -print0 2>/dev/null | while IFS= read -r -d '' file; d
     safe_remove "$file"
 done
 
-# 4. Node.js cache (frontend)
-echo "--- Cleaning Node.js cache ---"
-safe_remove "frontend/node_modules"
-safe_remove "frontend/.cache"
-safe_remove "frontend/dist"
-safe_remove "frontend/build"
-
-# 5. Temporary files
+# 4. Temporary files
 echo "--- Cleaning temporary files ---"
 safe_remove "tmp"
 safe_remove "temp"
