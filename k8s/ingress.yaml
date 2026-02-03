@@ -26,22 +26,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - app.example.com
         - api.example.com
       secretName: route-optimizer-tls
   rules:
-    # Frontend
-    - host: app.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: frontend-service
-                port:
-                  number: 3000
-    # API
+    # API (headless service - no frontend)
     - host: api.example.com
       http:
         paths:
@@ -103,10 +91,3 @@ spec:
                 name: backend-api-service
                 port:
                   number: 8000
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: frontend-service
-                port:
-                  number: 3000
