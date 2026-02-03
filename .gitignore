@@ -64,15 +64,11 @@ docker/osrm/*.osm.pbf
 docker/osrm/*.osrm
 docker/osrm/*.osrm.*
 
-# Node.js
+# Node.js (for examples/tools)
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Frontend build
-frontend/dist/
-frontend/build/
 
 # Temporary files
 tmp/

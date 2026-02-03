@@ -117,7 +117,7 @@ graph TD
 
 ### Production Deployment
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed instructions on Nginx setup, SSL, and resource tuning.
+See [docs/DEPLOYMENT_GUIDE_RU.md](docs/DEPLOYMENT_GUIDE_RU.md) for detailed instructions on Nginx setup, SSL, and resource tuning.
 
 ```bash
 # Production Launch
@@ -129,9 +129,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ## 📚 Documentation
 
 - [**API Reference**](docs/API_REFERENCE.md): Detailed endpoint usage.
-- [**Deployment Guide**](docs/DEPLOYMENT.md): Production setup guide.
-- [**Technical Audit**](docs/TECHNICAL_AUDIT.md): Architectural analysis.
+- [**Deployment Guide**](docs/DEPLOYMENT_GUIDE_RU.md): Production setup guide.
+- [**Monitoring**](docs/MONITORING_RU.md): Observability and metrics.
+- [**Troubleshooting**](docs/TROUBLESHOOTING_RU.md): Common issues and solutions.
+- [**Technical Audit**](docs/CTO_TECHNICAL_AUDIT.md): Architectural analysis.
 - [**FMCG Requirements**](docs/FMCG_REQUIREMENTS.md): Domain logic specification.
+- [**Examples**](examples/README.md): Postman collection and Python SDK.
 
 ## 🛠️ Tech Stack
 

@@ -11,7 +11,6 @@
 COMPOSE_DEV = docker compose
 COMPOSE_PROD = docker compose -f docker-compose.yml -f docker-compose.prod.yml
 BACKEND = backend
-FRONTEND = frontend
 
 # Цвета для вывода
 GREEN  := $(shell tput -Txterm setaf 2)
@@ -63,7 +62,7 @@ dev: ## Запустить в режиме разработки
 	@echo "${BLUE}Запуск dev окружения...${RESET}"
 	$(COMPOSE_DEV) up -d db redis
 	@sleep 3
-	$(COMPOSE_DEV) up api celery celery-beat frontend
+	$(COMPOSE_DEV) up api celery celery-beat
 
 dev-up: ## Запустить все сервисы в фоне (dev)
 	$(COMPOSE_DEV) up -d

@@ -190,67 +190,113 @@ plan = await weekly_planner_kz.generate_weekly_plan(agent, clients, week_start)
 ## 📁 Структура проекта
 
 ```
-route-optimizer/
+sfa-routing/
 ├── backend/
 │   ├── app/
 │   │   ├── api/routes/           # API endpoints
-│   │   │   ├── agents.py         # CRUD агентов
-│   │   │   ├── clients.py        # CRUD клиентов
-│   │   │   ├── vehicles.py       # CRUD транспорта
-│   │   │   ├── planning.py       # Недельное планирование
-│   │   │   ├── delivery.py       # Оптимизация доставки
-│   │   │   ├── export.py         # PDF экспорт
+│   │   │   ├── field_routing.py  # TSP/VRP маршрутизация
 │   │   │   └── health.py         # Health checks
-│   │   ├── core/
-│   │   │   ├── config.py         # Настройки приложения
-│   │   │   ├── database.py       # DB connection
-│   │   │   ├── security.py       # Auth (TODO)
-│   │   │   └── celery_app.py     # Celery config
+│   │   ├── core/                 # Ядро приложения
+│   │   │   ├── config.py         # Настройки (Pydantic Settings)
+│   │   │   ├── database.py       # Async DB connection
+│   │   │   ├── security.py       # JWT Auth, password hashing
+│   │   │   ├── auth.py           # Authentication logic
+│   │   │   ├── celery_app.py     # Celery config
+│   │   │   ├── cache.py          # Cache utilities
+│   │   │   ├── redis.py          # Redis client
+│   │   │   ├── logging.py        # Structured JSON logging
+│   │   │   ├── metrics.py        # Prometheus metrics
+│   │   │   ├── exceptions.py     # Custom exceptions
+│   │   │   ├── rate_limit.py     # Rate limiting config
+│   │   │   ├── sentry.py         # Error tracking
+│   │   │   └── middleware/       # HTTP middleware
+│   │   │       └── idempotency.py
 │   │   ├── models/               # SQLAlchemy models
-│   │   │   ├── agent.py
-│   │   │   ├── client.py
-│   │   │   ├── vehicle.py
-│   │   │   ├── visit_plan.py
-│   │   │   ├── delivery_order.py
-│   │   │   └── delivery_route.py
+│   │   │   ├── base.py           # Base model with audit
+│   │   │   ├── agent.py          # Торговый представитель
+│   │   │   ├── client.py         # Клиент/магазин
+│   │   │   ├── vehicle.py        # Транспорт
+│   │   │   ├── visit_plan.py     # План визита
+│   │   │   ├── delivery_order.py # Заказ на доставку
+│   │   │   ├── delivery_route.py # Маршрут доставки
+│   │   │   ├── user.py           # Пользователь системы
+│   │   │   ├── api_client.py     # API клиент
+│   │   │   └── webhook.py        # Webhook подписка
 │   │   ├── schemas/              # Pydantic schemas
-│   │   ├── services/             # Бизнес-логика
-│   │   │   ├── osrm_client.py    # OSRM API клиент
-│   │   │   ├── vroom_solver.py   # VROOM solver
-│   │   │   ├── ortools_solver.py # Google OR-Tools
-│   │   │   ├── genetic_solver.py # Genetic Algorithm solver ⭐ NEW
-│   │   │   ├── greedy_solver.py  # Fallback solver + 2-opt
-│   │   │   ├── solver_interface.py # Strategy pattern
-│   │   │   ├── solver_selector.py # Smart solver selection ⭐ NEW
-│   │   │   ├── weekly_planner.py # Недельное планирование
-│   │   │   ├── route_optimizer.py # Оптимизация доставки
-│   │   │   ├── rerouting.py      # Dynamic re-routing
-│   │   │   ├── predictive_rerouting.py # Predictive engine
+│   │   │   ├── field_routing.py  # TSP/VRP request/response
+│   │   │   ├── planning.py       # Weekly planning schemas
+│   │   │   ├── delivery.py       # Delivery schemas
+│   │   │   ├── agent.py, client.py, vehicle.py
+│   │   │   └── validators.py     # Custom validators
+│   │   ├── services/             # Бизнес-логика (модульная)
+│   │   │   ├── solvers/          # VRP солверы
+│   │   │   │   ├── solver_interface.py  # Base interface
+│   │   │   │   ├── solver_selector.py   # Smart auto-selection
+│   │   │   │   ├── vroom_solver.py      # VROOM (<150 точек)
+│   │   │   │   ├── ortools_solver.py    # OR-Tools (<300 точек)
+│   │   │   │   ├── genetic_solver.py    # GA (>300 точек)
+│   │   │   │   └── greedy_solver.py     # Fallback + 2-opt
+│   │   │   ├── routing/          # Маршрутизация
+│   │   │   │   ├── osrm_client.py       # OSRM API
+│   │   │   │   ├── route_optimizer.py   # Orchestrator
+│   │   │   │   └── clustering.py        # Кластеризация
+│   │   │   ├── planning/         # Планирование
+│   │   │   │   ├── weekly_planner.py    # Недельный план
+│   │   │   │   ├── field_routing.py     # Field routing logic
+│   │   │   │   ├── rerouting.py         # Dynamic re-routing
+│   │   │   │   └── predictive_rerouting.py  # Predictive engine
+│   │   │   ├── caching/          # Кэширование
+│   │   │   │   ├── cache_warmer.py      # Proactive warming
+│   │   │   │   └── parallel_matrix.py   # Parallel OSRM (4x)
+│   │   │   ├── realtime/         # Real-time
+│   │   │   │   ├── websocket_manager.py # GPS tracking
+│   │   │   │   ├── event_pipeline.py    # Event processing
+│   │   │   │   └── spatial_index.py     # H3 indexing
+│   │   │   ├── security/         # Безопасность
+│   │   │   │   └── geo_security.py      # GDPR, encryption
 │   │   │   ├── analytics.py      # Advanced analytics
-│   │   │   ├── spatial_index.py  # H3 spatial indexing ⭐ NEW
-│   │   │   ├── parallel_matrix.py # Parallel OSRM matrix ⭐ NEW
-│   │   │   ├── cache_warmer.py   # Proactive cache warming ⭐ NEW
-│   │   │   ├── event_pipeline.py # Event-driven rerouting ⭐ NEW
-│   │   │   ├── geo_security.py   # Geo security (GDPR) ⭐ NEW
-│   │   │   ├── clustering.py     # OSRM-based clustering
-│   │   │   └── pdf_export.py     # PDF генерация
+│   │   │   ├── pdf_export.py     # PDF reports
+│   │   │   └── webhook_service.py # Webhook dispatch
 │   │   ├── integrations/
 │   │   │   └── smartup_erp.py    # ERP интеграция
 │   │   └── tasks/
-│   │       └── optimization.py   # Celery tasks
-│   ├── scripts/                  # Утилиты
-│   │   ├── generate_test_data.py # Генерация тестовых данных
-│   │   └── performance_test.py   # Тесты производительности
-│   ├── tests/
-│   ├── alembic/
-│   └── requirements.txt
+│   │       └── optimization.py   # Celery background tasks
+│   ├── tests/                    # 17 test files, 200+ tests
+│   ├── scripts/
+│   │   ├── generate_test_data.py
+│   │   └── performance_test.py
+│   ├── alembic/                  # DB migrations
+│   └── requirements.txt          # 74 packages
 ├── docker/
-│   ├── osrm/                     # OSRM конфигурация
-│   └── vroom/                    # VROOM конфигурация
-├── docs/                         # Документация
-│   ├── TECHNICAL_AUDIT.md        # Технический аудит
-│   └── ORTOOLS_OSRM_ANALYSIS.md  # Анализ технологий
-└── docker-compose.yml
+│   ├── nginx/                    # Nginx reverse proxy
+│   │   ├── nginx.conf
+│   │   └── conf.d/default.conf
+│   ├── osrm/                     # OSRM setup guide
+│   └── vroom/                    # VROOM setup guide
+├── docs/                         # Документация (9 файлов)
+│   ├── API_REFERENCE.md          # Справочник API
+│   ├── CTO_TECHNICAL_AUDIT.md    # Технический аудит
+│   ├── DEPLOYMENT_GUIDE_RU.md    # Развертывание
+│   ├── FMCG_REQUIREMENTS.md      # FMCG требования
+│   ├── MONITORING_RU.md          # Мониторинг
+│   ├── ORTOOLS_OSRM_ANALYSIS.md  # Анализ технологий
+│   ├── PREFLIGHT_CHECKLIST.md    # Чеклист запуска
+│   ├── TROUBLESHOOTING_RU.md     # Решение проблем
+│   └── USE_CASES.md              # Сценарии использования
+├── examples/                     # Примеры интеграции
+│   ├── postman/                  # Postman collection
+│   └── python/                   # Python SDK + examples
+├── k8s/                          # Kubernetes manifests (9 файлов)
+├── scripts/                      # DevOps scripts (6 файлов)
+│   ├── deploy.sh, deploy-beta.sh
+│   ├── backup.sh, rollback.sh
+│   ├── cleanup.sh, diagnose.sh
+├── .github/workflows/ci-cd.yml   # GitHub Actions CI/CD
+├── docker-compose.yml            # Development
+├── docker-compose.prod.yml       # Production
+├── docker-compose.beta.yml       # Beta
+├── Makefile                      # Automation commands
+└── CLAUDE.md                     # This file
 ```
 
 ---
@@ -966,12 +1012,16 @@ services:
 | Документ | Описание |
 |----------|----------|
 | [README.md](README.md) | Главная страница |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Справочник API |
 | [docs/DEPLOYMENT_GUIDE_RU.md](docs/DEPLOYMENT_GUIDE_RU.md) | Руководство по развертыванию |
 | [docs/MONITORING_RU.md](docs/MONITORING_RU.md) | Настройка мониторинга |
 | [docs/TROUBLESHOOTING_RU.md](docs/TROUBLESHOOTING_RU.md) | Устранение неполадок |
 | [docs/PREFLIGHT_CHECKLIST.md](docs/PREFLIGHT_CHECKLIST.md) | Чеклист перед запуском |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Справочник API |
-| [docs/TECHNICAL_AUDIT.md](docs/TECHNICAL_AUDIT.md) | Технический аудит |
+| [docs/FMCG_REQUIREMENTS.md](docs/FMCG_REQUIREMENTS.md) | FMCG бизнес-требования |
+| [docs/USE_CASES.md](docs/USE_CASES.md) | Сценарии использования |
+| [docs/CTO_TECHNICAL_AUDIT.md](docs/CTO_TECHNICAL_AUDIT.md) | Технический аудит |
+| [docs/ORTOOLS_OSRM_ANALYSIS.md](docs/ORTOOLS_OSRM_ANALYSIS.md) | Анализ технологий |
+| [examples/README.md](examples/README.md) | Примеры использования |
 
 ---
 
