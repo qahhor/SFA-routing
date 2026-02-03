@@ -2,12 +2,13 @@
 
 Enterprise-grade microservice for optimizing routes for field sales representatives (SFA) and delivery transportation in Central Asia.
 
-![Version](https://img.shields.io/badge/Version-1.2-blue)
+![Version](https://img.shields.io/badge/Version-1.2.1-blue)
 ![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-success)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-success)
 ![PostGIS](https://img.shields.io/badge/PostGIS-15-blue)
 ![Tests](https://img.shields.io/badge/Tests-200+-success)
+![Security](https://img.shields.io/badge/Security-Audited-green)
 
 ## 🌟 Key Features
 
@@ -134,14 +135,21 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 ## 🛠️ Tech Stack
 
-- **Backend**: Python 3.11, FastAPI, SQLAlchemy 2.0 (Async)
-- **Database**: PostgreSQL 15 + PostGIS
-- **Queue**: Celery + Redis
-- **Solvers**: VROOM, OR-Tools, Genetic Algorithm, Greedy+2opt
-- **Geo**: H3 (Uber), OSRM, Parallel Matrix
-- **Security**: Fernet Encryption, GDPR Compliance
-- **Infra**: Docker, Nginx, GitHub Actions (CI/CD)
-- **Observability**: JSON Logging, Health Checks (`/health`)
+| Category | Technology | Version |
+|----------|------------|---------|
+| **Backend** | FastAPI | 0.115.0 |
+| | SQLAlchemy | 2.0.36 |
+| | Pydantic | 2.9.2 |
+| | Celery | 5.4.0 |
+| **Database** | PostgreSQL + PostGIS | 15 |
+| **Scientific** | NumPy | 2.0.2 |
+| | SciPy | 1.14.1 |
+| | OR-Tools | 9.11 |
+| **Geospatial** | H3 (Uber) | 4.1.1 |
+| | OSRM | v5.27.1 |
+| **Security** | python-jose | 3.5.0 |
+| | bcrypt | 4.2.0 |
+| **Infra** | Docker, Nginx, GitHub Actions |
 
 ## 🧪 Testing
 
@@ -162,6 +170,19 @@ docker compose exec api pytest tests/test_geo_security.py
 # Run Performance Benchmarks
 docker compose exec api python scripts/performance_test.py
 ```
+
+## 🔒 Security (v1.2.1)
+
+All dependencies audited and patched (Feb 2026):
+
+| Package | Fix | CVE |
+|---------|-----|-----|
+| aiohttp | 3.9.3 → 3.10.10 | CVE-2024-23334 |
+| weasyprint | 60.2 → 62.3 | CVE-2024-28184 |
+| python-jose | 3.3.0 → 3.5.0 | CVE-2024-33663, CVE-2024-33664 |
+| passlib | Replaced with bcrypt | Deprecated |
+| h3 | 3.7.7 → 4.1.1 | API migration |
+| numpy | 1.26.4 → 2.0.2 | Performance |
 
 ## 🆕 What's New in v1.2
 
