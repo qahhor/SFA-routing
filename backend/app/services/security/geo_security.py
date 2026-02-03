@@ -201,8 +201,8 @@ class LocationAnonymizer:
         try:
             import h3
 
-            cell = h3.geo_to_h3(latitude, longitude, resolution)
-            centroid = h3.h3_to_geo(cell)
+            cell = h3.latlng_to_cell(latitude, longitude, resolution)
+            centroid = h3.cell_to_latlng(cell)
 
             return AnonymizedLocation(
                 original_precision=6,

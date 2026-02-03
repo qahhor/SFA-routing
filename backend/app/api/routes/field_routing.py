@@ -38,7 +38,7 @@ vrpc_router = APIRouter(
 
 
 @tsp_router.post(
-    "",
+    "/tsp",
     response_model=Union[TSPAutoResponse, TSPSingleResponse],
     status_code=status.HTTP_200_OK,
     summary="Solve Traveling Salesperson Problem",

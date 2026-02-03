@@ -7,7 +7,7 @@ Contains core routing services:
 - Clustering algorithms
 """
 
-from app.services.routing.clustering import Clusterer
+from app.services.routing.clustering import ClusteringService, clustering_service
 from app.services.routing.distance_clustering import (
     DistanceBasedClusterer,
     distance_clusterer,
@@ -20,7 +20,8 @@ __all__ = [
     "osrm_client",
     "RouteOptimizer",
     "route_optimizer",
-    "Clusterer",
+    "ClusteringService",
+    "clustering_service",
     "DistanceBasedClusterer",
     "distance_clusterer",
 ]
