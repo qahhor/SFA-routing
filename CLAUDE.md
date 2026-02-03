@@ -248,7 +248,7 @@ route-optimizer/
 │   ├── osrm/                     # OSRM конфигурация
 │   └── vroom/                    # VROOM конфигурация
 ├── docs/                         # Документация
-│   ├── TECHNICAL_AUDIT.md        # Технический аудит
+│   ├── CTO_TECHNICAL_AUDIT.md    # Технический аудит (CTO)
 │   └── ORTOOLS_OSRM_ANALYSIS.md  # Анализ технологий
 └── docker-compose.yml
 ```
@@ -971,7 +971,7 @@ services:
 | [docs/TROUBLESHOOTING_RU.md](docs/TROUBLESHOOTING_RU.md) | Устранение неполадок |
 | [docs/PREFLIGHT_CHECKLIST.md](docs/PREFLIGHT_CHECKLIST.md) | Чеклист перед запуском |
 | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Справочник API |
-| [docs/TECHNICAL_AUDIT.md](docs/TECHNICAL_AUDIT.md) | Технический аудит |
+| [docs/CTO_TECHNICAL_AUDIT.md](docs/CTO_TECHNICAL_AUDIT.md) | Технический аудит (CTO) |
 
 ---
 
