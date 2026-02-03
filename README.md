@@ -130,8 +130,11 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 - [**API Reference**](docs/API_REFERENCE.md): Detailed endpoint usage.
 - [**Deployment Guide**](docs/DEPLOYMENT_GUIDE_RU.md): Production setup guide.
+- [**Monitoring**](docs/MONITORING_RU.md): Observability and metrics.
+- [**Troubleshooting**](docs/TROUBLESHOOTING_RU.md): Common issues and solutions.
 - [**Technical Audit**](docs/CTO_TECHNICAL_AUDIT.md): Architectural analysis.
 - [**FMCG Requirements**](docs/FMCG_REQUIREMENTS.md): Domain logic specification.
+- [**Examples**](examples/README.md): Postman collection and Python SDK.
 
 ## 🛠️ Tech Stack
 
