@@ -5,7 +5,7 @@ Webhook subscription model.
 import uuid
 from typing import Optional
 
-from sqlalchemy import ARRAY, Boolean, String
+from sqlalchemy import Boolean, String, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -24,9 +24,8 @@ class WebhookSubscription(Base, UUIDMixin, TimestampMixin):
     secret: Mapped[str] = mapped_column(String(100), nullable=False)  # For HMAC signature
 
     # Events to subscribe to: ["optimization.completed", "optimization.failed"]
-    # Storing as comma-separated string for simplicity in minimal DB setup,
-    # or ARRAY if Postgres specific. Let's use ARRAY(String) assuming Postgres.
-    events: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
+    # Using JSON for database compatibility (works with both SQLite and PostgreSQL)
+    events: Mapped[list[str]] = mapped_column(JSON, nullable=False)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

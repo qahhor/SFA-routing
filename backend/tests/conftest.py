@@ -191,9 +191,10 @@ def sample_routing_jobs(sample_coordinates):
         Job(
             id=uuid4(),
             location=Location(
+                id=uuid4(),
+                name=f"Point {i}",
                 latitude=lat,
                 longitude=lon,
-                address=f"Point {i}",
             ),
             priority=1,
             demand_kg=10.0,

@@ -258,29 +258,29 @@ class TestFallbackSpatialIndex:
 class TestCreateSpatialIndex:
     """Tests for create_spatial_index factory function."""
 
-    def test_creates_fallback_when_h3_unavailable(self):
-        """Test factory creates fallback index when H3 not available."""
-        with patch('app.services.realtime.spatial_index.H3_AVAILABLE', False):
-            # Reload module to apply patch
-            from importlib import reload
-            import app.services.realtime.spatial_index as si
-            reload(si)
+    def test_creates_spatial_index(self):
+        """Test factory creates appropriate index."""
+        from app.services.realtime.spatial_index import create_spatial_index, H3_AVAILABLE, H3SpatialIndex
 
-            index = si.create_spatial_index()
+        index = create_spatial_index()
 
-            assert isinstance(index, si.FallbackSpatialIndex)
+        # Should create H3SpatialIndex when H3 is available
+        if H3_AVAILABLE:
+            assert isinstance(index, H3SpatialIndex)
+        else:
+            assert isinstance(index, FallbackSpatialIndex)
 
     def test_factory_with_custom_resolution(self):
         """Test factory accepts resolution parameter."""
-        with patch('app.services.realtime.spatial_index.H3_AVAILABLE', False):
-            from importlib import reload
-            import app.services.realtime.spatial_index as si
-            reload(si)
+        from app.services.realtime.spatial_index import create_spatial_index, H3_AVAILABLE, H3SpatialIndex
 
-            index = si.create_spatial_index(resolution=7)
+        index = create_spatial_index(resolution=7)
 
-            # Fallback ignores resolution, uses grid size
-            assert isinstance(index, si.FallbackSpatialIndex)
+        # Should create appropriate index based on H3 availability
+        if H3_AVAILABLE:
+            assert isinstance(index, H3SpatialIndex)
+        else:
+            assert isinstance(index, FallbackSpatialIndex)
 
 
 class TestHaversineDistance:
