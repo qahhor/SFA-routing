@@ -772,6 +772,81 @@ await warmer.invalidate_client_caches(client_id)
 
 ---
 
+## 🧪 Тестирование
+
+### Статус тестов
+```
+329 passed, 24 skipped
+```
+
+**Запуск тестов:**
+```bash
+cd backend
+pytest tests/ -v          # Все тесты
+pytest tests/ -v --tb=short  # С коротким traceback
+pytest tests/test_solvers.py  # Только тесты солверов
+```
+
+**Пропущенные тесты (24):**
+- `test_api.py`: CRUD endpoints для agents/clients/vehicles (не реализованы)
+- `test_api_endpoints.py`: Bulk import, webhooks, export endpoints (не реализованы)
+
+### Важные dataclass сигнатуры
+
+При написании тестов используйте корректные сигнатуры:
+
+```python
+from app.services.solvers.solver_interface import Location, VehicleConfig, Job
+
+# Location - ОБЯЗАТЕЛЬНЫЕ поля: id, name
+location = Location(
+    id=uuid4(),
+    name="Point 1",
+    latitude=41.311,
+    longitude=69.279,
+)
+
+# VehicleConfig - ОБЯЗАТЕЛЬНЫЕ поля: id, name, capacity_kg
+vehicle = VehicleConfig(
+    id=uuid4(),
+    name="Vehicle 1",
+    capacity_kg=100.0,
+    start_location=depot_location,  # опционально
+)
+
+# Job
+job = Job(
+    id=uuid4(),
+    location=location,
+    demand_kg=10.0,  # не demand[]
+    priority=1,
+)
+
+# RoutingProblem - ОБЯЗАТЕЛЬНО: planning_date
+problem = RoutingProblem(
+    jobs=[job],
+    vehicles=[vehicle],
+    planning_date=date.today(),  # ОБЯЗАТЕЛЬНО!
+)
+```
+
+### Особенности методов солверов
+
+```python
+# solve_tsp() с return_to_start=True возвращает N+1 элементов
+result = await solver.solve_tsp(locations, return_to_start=True)
+# len(result) == len(locations) + 1  # [0, 3, 2, 1, 0]
+
+# _calculate_distance() возвращает МЕТРЫ (не км)
+distance = solver._calculate_distance(loc1, loc2)
+# distance < 10000  # для близких точек
+
+# _improve_with_2opt() принимает locations и route
+improved = solver._improve_with_2opt(locations, tour, is_closed=True)
+```
+
+---
+
 ## 📊 Ожидаемые бизнес-результаты
 
 | Метрика | До оптимизации | После | Улучшение |
@@ -861,7 +936,26 @@ class DeliveryRoute:
 
 ## 🌐 API Endpoints
 
-### Planning API
+> **Статус реализации:** ✅ = Реализовано, 🚧 = В разработке
+
+### Health API ✅
+```http
+GET /api/v1/health
+  → Статус здоровья сервиса
+```
+
+### Field Routing API ✅
+```http
+POST /api/v1/field/tsp
+  Body: { locations[], start_index, return_to_start }
+  → TSP оптимизация маршрута
+
+POST /api/v1/field/vrp
+  Body: { jobs[], vehicles[], constraints }
+  → VRP оптимизация с ограничениями
+```
+
+### Planning API 🚧
 ```http
 POST /api/v1/planning/weekly
   Body: { agent_id, week_start_date, week_number }
@@ -875,7 +969,7 @@ PUT /api/v1/planning/visit/{id}
   → Обновить статус визита
 ```
 
-### Delivery API
+### Delivery API 🚧
 ```http
 POST /api/v1/delivery/optimize
   Body: { order_ids, vehicle_ids, date }
@@ -888,7 +982,27 @@ GET /api/v1/delivery/route/{id}
   → Маршрут с геометрией
 ```
 
-### Export API
+### Bulk Import API 🚧
+```http
+POST /api/v1/bulk/orders
+  Body: [{ external_id, client_external_id, weight_kg, ... }]
+  → Массовый импорт заказов
+```
+
+### Webhook API 🚧
+```http
+POST /api/v1/webhooks
+  Body: { name, url, secret, events[] }
+  → Создать подписку на события
+
+GET /api/v1/webhooks
+  → Список подписок
+
+DELETE /api/v1/webhooks/{id}
+  → Удалить подписку
+```
+
+### Export API 🚧
 ```http
 GET /api/v1/export/daily-plan/{agent_id}/{date}
   → PDF дневного плана
@@ -900,7 +1014,7 @@ GET /api/v1/export/delivery-route/{route_id}
   → PDF маршрутного листа
 ```
 
-### Reference Data API
+### Reference Data API 🚧
 ```http
 GET/POST /api/v1/agents
 GET/POST /api/v1/clients
@@ -996,7 +1110,7 @@ services:
 - [x] **R19-R21**: Geo Security (шифрование, анонимизация, GDPR)
 - [x] Comprehensive Unit & Integration Tests (200+ тестов)
 
-### Фаза 10: Security Audit (Feb 2026) ✅ NEW
+### Фаза 10: Security Audit (Feb 2026) ✅
 - [x] CVE-2024-23334: aiohttp path traversal (3.9.3 → 3.10.10)
 - [x] CVE-2024-28184: weasyprint SSRF (60.2 → 62.3)
 - [x] CVE-2024-33663/33664: python-jose ECDSA bypass (3.3.0 → 3.5.0)
@@ -1004,6 +1118,19 @@ services:
 - [x] h3 v3 → v4 migration (breaking API changes)
 - [x] numpy 1.x → 2.x upgrade (performance improvements)
 - [x] FastAPI/Pydantic/SQLAlchemy/Celery updates
+
+### Фаза 11: Test Actualization (Feb 2026) ✅ NEW
+- [x] Актуализация test_solvers.py (сигнатуры методов солверов)
+- [x] Актуализация test_solver_selector.py (SmartSolverSelector behavior)
+- [x] Актуализация test_services.py (async/await методы)
+- [x] Актуализация test_integration_new_modules.py (Location/VehicleConfig)
+- [x] Актуализация test_geo_security.py (LocationAnonymizer)
+- [x] Актуализация test_spatial_index.py (H3 availability)
+- [x] Исправление SQLite совместимости (ARRAY → JSON в webhook model)
+- [x] Исправление genetic_solver.py (vehicle_name в Route)
+- [x] Маркировка нереализованных API тестов как skipped
+
+**Результаты тестов:** 329 passed, 24 skipped
 
 ---
 

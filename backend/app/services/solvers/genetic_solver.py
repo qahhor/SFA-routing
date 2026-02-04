@@ -574,6 +574,7 @@ class GeneticSolver(RouteSolver):
                 routes.append(
                     Route(
                         vehicle_id=vehicle_id,
+                        vehicle_name=vehicle.name if vehicle else f"Vehicle_{v_idx}",
                         steps=steps,
                         total_distance_m=individual.total_distance,
                         total_duration_s=int(individual.total_distance / 8.33),  # ~30km/h

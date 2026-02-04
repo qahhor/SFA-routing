@@ -70,7 +70,8 @@ class TestWeeklyPlanner:
         visits_week2 = planner.calculate_required_visits([client], week_number=2)
         assert visits_week2[client.id] == 0
 
-    def test_cluster_by_geography(self):
+    @pytest.mark.asyncio
+    async def test_cluster_by_geography(self):
         """Test geographic clustering."""
         planner = WeeklyPlanner()
 
@@ -88,11 +89,12 @@ class TestWeeklyPlanner:
             for i in range(10)
         ]
 
-        clusters = planner.cluster_by_geography(clients, n_clusters=3)
+        clusters = await planner.cluster_by_geography(clients, n_clusters=3)
         assert len(clusters) == 3
         assert sum(len(c) for c in clusters.values()) == 10
 
-    def test_assign_to_days(self):
+    @pytest.mark.asyncio
+    async def test_assign_to_days(self):
         """Test day assignment."""
         planner = WeeklyPlanner()
 
@@ -110,7 +112,7 @@ class TestWeeklyPlanner:
         ]
 
         visits_needed = {c.id: 1 for c in clients}
-        assignments = planner.assign_to_days(
+        assignments = await planner.assign_to_days(
             clients, visits_needed, n_days=5, max_per_day=10
         )
 

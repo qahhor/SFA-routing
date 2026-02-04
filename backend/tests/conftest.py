@@ -191,9 +191,10 @@ def sample_routing_jobs(sample_coordinates):
         Job(
             id=uuid4(),
             location=Location(
+                id=uuid4(),
+                name=f"Point {i}",
                 latitude=lat,
                 longitude=lon,
-                address=f"Point {i}",
             ),
             priority=1,
             demand_kg=10.0,
@@ -211,12 +212,14 @@ def sample_routing_vehicles():
     return [
         VehicleConfig(
             id=uuid4(),
+            name="Vehicle 1",
             capacity_kg=100.0,
             work_start=time(8, 0),
             work_end=time(18, 0),
         ),
         VehicleConfig(
             id=uuid4(),
+            name="Vehicle 2",
             capacity_kg=80.0,
             work_start=time(8, 0),
             work_end=time(18, 0),

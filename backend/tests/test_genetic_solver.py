@@ -120,11 +120,11 @@ class TestGeneticSolver:
     def sample_locations(self):
         """Create sample locations for testing."""
         return [
-            Location(latitude=41.311, longitude=69.279, address="Point 1"),
-            Location(latitude=41.321, longitude=69.289, address="Point 2"),
-            Location(latitude=41.331, longitude=69.299, address="Point 3"),
-            Location(latitude=41.341, longitude=69.309, address="Point 4"),
-            Location(latitude=41.351, longitude=69.319, address="Point 5"),
+            Location(id=uuid4(), name="Point 1", latitude=41.311, longitude=69.279),
+            Location(id=uuid4(), name="Point 2", latitude=41.321, longitude=69.289),
+            Location(id=uuid4(), name="Point 3", latitude=41.331, longitude=69.299),
+            Location(id=uuid4(), name="Point 4", latitude=41.341, longitude=69.309),
+            Location(id=uuid4(), name="Point 5", latitude=41.351, longitude=69.319),
         ]
 
     @pytest.fixture
@@ -146,12 +146,14 @@ class TestGeneticSolver:
         return [
             VehicleConfig(
                 id=uuid4(),
+                name="Vehicle 1",
                 capacity_kg=100.0,
                 work_start=time(8, 0),
                 work_end=time(18, 0),
             ),
             VehicleConfig(
                 id=uuid4(),
+                name="Vehicle 2",
                 capacity_kg=80.0,
                 work_start=time(8, 0),
                 work_end=time(18, 0),
@@ -522,7 +524,7 @@ class TestGeneticSolverIntegration:
     async def test_full_evolution_cycle(self, fast_solver):
         """Test complete evolution cycle."""
         locations = [
-            Location(latitude=41.311 + i * 0.01, longitude=69.279 + i * 0.01, address=f"P{i}")
+            Location(id=uuid4(), name=f"P{i}", latitude=41.311 + i * 0.01, longitude=69.279 + i * 0.01)
             for i in range(10)
         ]
         jobs = [
