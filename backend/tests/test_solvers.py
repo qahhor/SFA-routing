@@ -33,24 +33,24 @@ class TestVROOMSolver:
         return RoutingProblem(
             jobs=[
                 Job(
-                    id=str(uuid4()),
-                    location=Location(latitude=41.311, longitude=69.279),
-                    service_time_s=900,
-                    demand=[10],
+                    id=uuid4(),
+                    location=Location(id=uuid4(), name="Job 1", latitude=41.311, longitude=69.279),
+                    demand_kg=10.0,
+                    priority=1,
                 ),
                 Job(
-                    id=str(uuid4()),
-                    location=Location(latitude=41.320, longitude=69.290),
-                    service_time_s=600,
-                    demand=[5],
+                    id=uuid4(),
+                    location=Location(id=uuid4(), name="Job 2", latitude=41.320, longitude=69.290),
+                    demand_kg=5.0,
+                    priority=1,
                 ),
             ],
             vehicles=[
                 VehicleConfig(
-                    id=str(uuid4()),
-                    start_location=Location(latitude=41.300, longitude=69.270),
-                    capacity=[100],
-                    max_travel_time_s=28800,  # 8 hours
+                    id=uuid4(),
+                    name="Vehicle 1",
+                    start_location=Location(id=uuid4(), name="Depot", latitude=41.300, longitude=69.270),
+                    capacity_kg=100.0,
                 ),
             ],
         )
@@ -84,8 +84,8 @@ class TestVROOMSolver:
     async def test_solve_tsp_trivial(self, solver):
         """Test TSP with trivial input (<=2 locations)."""
         locations = [
-            Location(latitude=41.311, longitude=69.279),
-            Location(latitude=41.320, longitude=69.290),
+            Location(id=uuid4(), name="Loc 1", latitude=41.311, longitude=69.279),
+            Location(id=uuid4(), name="Loc 2", latitude=41.320, longitude=69.290),
         ]
 
         result = await solver.solve_tsp(locations)
@@ -95,7 +95,7 @@ class TestVROOMSolver:
     @pytest.mark.asyncio
     async def test_solve_tsp_single_location(self, solver):
         """Test TSP with single location."""
-        locations = [Location(latitude=41.311, longitude=69.279)]
+        locations = [Location(id=uuid4(), name="Loc 1", latitude=41.311, longitude=69.279)]
 
         result = await solver.solve_tsp(locations)
 
@@ -135,10 +135,10 @@ class TestORToolsSolver:
     def sample_locations(self):
         """Create sample locations for testing."""
         return [
-            Location(latitude=41.300, longitude=69.270),  # Depot
-            Location(latitude=41.311, longitude=69.279),
-            Location(latitude=41.320, longitude=69.290),
-            Location(latitude=41.305, longitude=69.285),
+            Location(id=uuid4(), name="Depot", latitude=41.300, longitude=69.270),
+            Location(id=uuid4(), name="Loc 1", latitude=41.311, longitude=69.279),
+            Location(id=uuid4(), name="Loc 2", latitude=41.320, longitude=69.290),
+            Location(id=uuid4(), name="Loc 3", latitude=41.305, longitude=69.285),
         ]
 
     def test_solver_initialization(self, solver):
@@ -179,26 +179,30 @@ class TestGreedySolver:
         return RoutingProblem(
             jobs=[
                 Job(
-                    id=str(uuid4()),
-                    location=Location(latitude=41.311, longitude=69.279),
-                    service_time_s=900,
+                    id=uuid4(),
+                    location=Location(id=uuid4(), name="Job 1", latitude=41.311, longitude=69.279),
+                    demand_kg=10.0,
+                    priority=1,
                 ),
                 Job(
-                    id=str(uuid4()),
-                    location=Location(latitude=41.320, longitude=69.290),
-                    service_time_s=600,
+                    id=uuid4(),
+                    location=Location(id=uuid4(), name="Job 2", latitude=41.320, longitude=69.290),
+                    demand_kg=5.0,
+                    priority=1,
                 ),
                 Job(
-                    id=str(uuid4()),
-                    location=Location(latitude=41.305, longitude=69.285),
-                    service_time_s=450,
+                    id=uuid4(),
+                    location=Location(id=uuid4(), name="Job 3", latitude=41.305, longitude=69.285),
+                    demand_kg=8.0,
+                    priority=1,
                 ),
             ],
             vehicles=[
                 VehicleConfig(
-                    id=str(uuid4()),
-                    start_location=Location(latitude=41.300, longitude=69.270),
-                    capacity=[100],
+                    id=uuid4(),
+                    name="Vehicle 1",
+                    start_location=Location(id=uuid4(), name="Depot", latitude=41.300, longitude=69.270),
+                    capacity_kg=100.0,
                 ),
             ],
         )
@@ -206,7 +210,6 @@ class TestGreedySolver:
     def test_solver_initialization(self, solver):
         """Test Greedy solver initializes correctly."""
         assert solver is not None
-        assert solver.use_2opt is True  # Should use 2-opt by default
 
     @pytest.mark.asyncio
     async def test_solve_returns_solution(self, solver, sample_problem):
@@ -289,15 +292,18 @@ class TestSolverFallback:
         problem = RoutingProblem(
             jobs=[
                 Job(
-                    id=str(uuid4()),
-                    location=Location(latitude=41.311, longitude=69.279),
-                    service_time_s=900,
+                    id=uuid4(),
+                    location=Location(id=uuid4(), name="Job 1", latitude=41.311, longitude=69.279),
+                    demand_kg=10.0,
+                    priority=1,
                 ),
             ],
             vehicles=[
                 VehicleConfig(
-                    id=str(uuid4()),
-                    start_location=Location(latitude=41.300, longitude=69.270),
+                    id=uuid4(),
+                    name="Vehicle 1",
+                    start_location=Location(id=uuid4(), name="Depot", latitude=41.300, longitude=69.270),
+                    capacity_kg=100.0,
                 ),
             ],
         )

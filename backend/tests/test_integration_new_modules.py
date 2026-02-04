@@ -340,7 +340,7 @@ class TestFullOptimizationPipeline:
         jobs = [
             Job(
                 id=uuid4(),
-                location=Location(latitude=lat, longitude=lon, address=f"Point {i}"),
+                location=Location(id=uuid4(), name=f"Point {i}", latitude=lat, longitude=lon),
                 priority=1,
             )
             for i, (lat, lon) in enumerate(decrypted_coords)

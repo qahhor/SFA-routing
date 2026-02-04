@@ -143,7 +143,7 @@ class TestSmartSolverSelector:
         """Create a simple job without time windows."""
         return Job(
             id=uuid4(),
-            location=Location(latitude=41.311, longitude=69.279, address="Test"),
+            location=Location(id=uuid4(), name="Test", latitude=41.311, longitude=69.279),
             priority=1,
             demand_kg=10.0,
         )
@@ -155,7 +155,7 @@ class TestSmartSolverSelector:
         end = datetime.now().replace(hour=10, minute=0)
         return Job(
             id=uuid4(),
-            location=Location(latitude=41.311, longitude=69.279, address="Test"),
+            location=Location(id=uuid4(), name="Test", latitude=41.311, longitude=69.279),
             priority=1,
             demand_kg=10.0,
             time_window_start=start,
@@ -167,6 +167,7 @@ class TestSmartSolverSelector:
         """Create a simple vehicle."""
         return VehicleConfig(
             id=uuid4(),
+            name="Test Vehicle",
             capacity_kg=100.0,
             work_start=time(8, 0),
             work_end=time(18, 0),
@@ -226,9 +227,10 @@ class TestSmartSolverSelector:
             Job(
                 id=uuid4(),
                 location=Location(
+                    id=uuid4(),
+                    name=f"Point {i}",
                     latitude=41.0 + i * 0.1,
                     longitude=69.0 + i * 0.1,
-                    address=f"Point {i}",
                 ),
                 priority=1,
             )
@@ -509,9 +511,10 @@ class TestSmartSolverSelector:
             Job(
                 id=uuid4(),
                 location=Location(
+                    id=uuid4(),
+                    name=f"P{i}",
                     latitude=41.0 + i * 0.001,
                     longitude=69.0 + i * 0.001,
-                    address=f"P{i}",
                 ),
                 priority=1,
                 demand_kg=1.0,
