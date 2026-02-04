@@ -17,15 +17,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, time
 from uuid import uuid4
 
-from app.services.genetic_solver import (
+from app.services.solvers.genetic_solver import (
     GAConfig,
     Individual,
     GeneticSolver,
 )
-from app.services.solver_interface import (
+from app.services.solvers.solver_interface import (
     RoutingProblem,
     Job,
-    Vehicle,
+    VehicleConfig,
     Location,
     SolverType,
 )
@@ -144,13 +144,13 @@ class TestGeneticSolver:
     def sample_vehicles(self):
         """Create sample vehicles for testing."""
         return [
-            Vehicle(
+            VehicleConfig(
                 id=uuid4(),
                 capacity_kg=100.0,
                 work_start=time(8, 0),
                 work_end=time(18, 0),
             ),
-            Vehicle(
+            VehicleConfig(
                 id=uuid4(),
                 capacity_kg=80.0,
                 work_start=time(8, 0),

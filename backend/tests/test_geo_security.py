@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from app.services.geo_security import (
+from app.services.security.geo_security import (
     CoordinateEncryptor,
     AnonymizationLevel,
     AnonymizedLocation,

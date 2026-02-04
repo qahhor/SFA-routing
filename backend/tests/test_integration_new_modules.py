@@ -18,7 +18,7 @@ class TestGeneticSolverWithSolverSelector:
     @pytest.fixture
     def sample_jobs(self):
         """Create sample jobs."""
-        from app.services.solver_interface import Job, Location
+        from app.services.solvers.solver_interface import Job, Location
 
         return [
             Job(
@@ -37,10 +37,10 @@ class TestGeneticSolverWithSolverSelector:
     @pytest.fixture
     def sample_vehicles(self):
         """Create sample vehicles."""
-        from app.services.solver_interface import Vehicle
+        from app.services.solvers.solver_interface import VehicleConfig
 
         return [
-            Vehicle(
+            VehicleConfig(
                 id=uuid4(),
                 capacity_kg=500.0,
                 work_start=time(8, 0),
@@ -51,8 +51,8 @@ class TestGeneticSolverWithSolverSelector:
 
     def test_selector_prefers_genetic_for_large_problems(self, sample_jobs, sample_vehicles):
         """Test that selector recommends genetic solver for large problems."""
-        from app.services.solver_selector import SmartSolverSelector
-        from app.services.solver_interface import RoutingProblem, SolverType
+        from app.services.solvers.solver_selector import SmartSolverSelector
+        from app.services.solvers.solver_interface import RoutingProblem, SolverType
 
         selector = SmartSolverSelector()
 
@@ -72,8 +72,8 @@ class TestGeneticSolverWithSolverSelector:
 
     def test_selector_features_extraction(self, sample_jobs, sample_vehicles):
         """Test feature extraction for solver selection."""
-        from app.services.solver_selector import SmartSolverSelector
-        from app.services.solver_interface import RoutingProblem
+        from app.services.solvers.solver_selector import SmartSolverSelector
+        from app.services.solvers.solver_interface import RoutingProblem
 
         selector = SmartSolverSelector()
 
@@ -119,7 +119,7 @@ class TestParallelMatrixWithCacheWarmer:
     @pytest.mark.asyncio
     async def test_parallel_matrix_caching(self, mock_osrm_client, mock_redis_client):
         """Test matrix computation with caching."""
-        from app.services.parallel_matrix import CachedParallelMatrixComputer
+        from app.services.caching.parallel_matrix import CachedParallelMatrixComputer
 
         computer = CachedParallelMatrixComputer(
             osrm_client=mock_osrm_client,
@@ -144,8 +144,8 @@ class TestEventPipelineWithSecurity:
     @pytest.mark.asyncio
     async def test_gps_event_with_encryption(self):
         """Test GPS event processing with coordinate encryption."""
-        from app.services.event_pipeline import GPSEvent, EventType
-        from app.services.geo_security import CoordinateEncryptor
+        from app.services.realtime.event_pipeline import GPSEvent, EventType
+        from app.services.security.geo_security import CoordinateEncryptor
 
         encryptor = CoordinateEncryptor("test-key")
 
@@ -171,13 +171,13 @@ class TestEventPipelineWithSecurity:
     @pytest.mark.asyncio
     async def test_event_pipeline_with_audit_logging(self):
         """Test event pipeline triggers audit logging."""
-        from app.services.event_pipeline import (
+        from app.services.realtime.event_pipeline import (
             EventPipeline,
             EventHandler,
             RoutingEvent,
             EventType,
         )
-        from app.services.geo_security import GeoAuditLogger, GeoAccessLog, GeoAccessAction
+        from app.services.security.geo_security import GeoAuditLogger, GeoAccessLog, GeoAccessAction
 
         # Setup audit logger mock
         mock_db_factory = MagicMock()
@@ -219,8 +219,8 @@ class TestSpatialIndexWithAnonymization:
 
     def test_anonymize_spatial_entities(self):
         """Test anonymizing entities in spatial index."""
-        from app.services.spatial_index import FallbackSpatialIndex, SpatialEntity
-        from app.services.geo_security import LocationAnonymizer, AnonymizationLevel
+        from app.services.realtime.spatial_index import FallbackSpatialIndex, SpatialEntity
+        from app.services.security.geo_security import LocationAnonymizer, AnonymizationLevel
 
         index = FallbackSpatialIndex(grid_size_degrees=0.001)
 
@@ -261,8 +261,8 @@ class TestGDPRWithCacheWarmer:
     @pytest.mark.asyncio
     async def test_gdpr_deletion_clears_caches(self):
         """Test GDPR deletion triggers cache invalidation."""
-        from app.services.geo_security import GDPRComplianceService
-        from app.services.cache_warmer import CacheWarmer
+        from app.services.security.geo_security import GDPRComplianceService
+        from app.services.caching.cache_warmer import CacheWarmer
 
         mock_db_factory = MagicMock()
         mock_db_factory.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
@@ -306,9 +306,9 @@ class TestFullOptimizationPipeline:
     @pytest.mark.asyncio
     async def test_optimization_with_security(self, mock_services):
         """Test optimization pipeline with security features."""
-        from app.services.genetic_solver import GeneticSolver, GAConfig
-        from app.services.geo_security import CoordinateEncryptor, LocationAnonymizer, AnonymizationLevel
-        from app.services.solver_interface import RoutingProblem, Job, Location, SolverType
+        from app.services.solvers.genetic_solver import GeneticSolver, GAConfig
+        from app.services.security.geo_security import CoordinateEncryptor, LocationAnonymizer, AnonymizationLevel
+        from app.services.solvers.solver_interface import RoutingProblem, Job, Location, SolverType
 
         # Setup
         encryptor = CoordinateEncryptor("pipeline-test-key")
@@ -375,7 +375,7 @@ class TestConcurrentProcessing:
     @pytest.mark.asyncio
     async def test_concurrent_event_processing(self):
         """Test concurrent event processing."""
-        from app.services.event_pipeline import (
+        from app.services.realtime.event_pipeline import (
             EventPipeline,
             EventHandler,
             RoutingEvent,
@@ -414,7 +414,7 @@ class TestConcurrentProcessing:
     @pytest.mark.asyncio
     async def test_concurrent_matrix_computation(self):
         """Test concurrent matrix batch computation."""
-        from app.services.parallel_matrix import ParallelMatrixComputer
+        from app.services.caching.parallel_matrix import ParallelMatrixComputer
 
         mock_osrm = MagicMock()
 
@@ -451,8 +451,8 @@ class TestErrorHandlingAcrossModules:
     @pytest.mark.asyncio
     async def test_solver_fallback_on_error(self):
         """Test solver continues on errors."""
-        from app.services.genetic_solver import GeneticSolver, GAConfig
-        from app.services.solver_interface import RoutingProblem, Job, Location
+        from app.services.solvers.genetic_solver import GeneticSolver, GAConfig
+        from app.services.solvers.solver_interface import RoutingProblem, Job, Location
 
         solver = GeneticSolver(GAConfig(
             population_size=5,
@@ -474,7 +474,7 @@ class TestErrorHandlingAcrossModules:
     @pytest.mark.asyncio
     async def test_event_pipeline_continues_on_handler_error(self):
         """Test event pipeline continues when handler fails."""
-        from app.services.event_pipeline import (
+        from app.services.realtime.event_pipeline import (
             EventPipeline,
             EventHandler,
             RoutingEvent,
@@ -501,7 +501,7 @@ class TestErrorHandlingAcrossModules:
 
     def test_encryption_with_invalid_key(self):
         """Test encryption error handling."""
-        from app.services.geo_security import CoordinateEncryptor
+        from app.services.security.geo_security import CoordinateEncryptor
 
         encryptor = CoordinateEncryptor("key1")
         encrypted = encryptor.encrypt_coordinates(41.311, 69.279)

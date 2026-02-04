@@ -15,7 +15,7 @@ import pytest
 from datetime import datetime, time, timedelta
 from uuid import uuid4
 
-from app.services.solver_selector import (
+from app.services.solvers.solver_selector import (
     ProblemComplexity,
     ProblemFeatures,
     SolverProfile,
@@ -23,10 +23,10 @@ from app.services.solver_selector import (
     SOLVER_PROFILES,
     solver_selector,
 )
-from app.services.solver_interface import (
+from app.services.solvers.solver_interface import (
     RoutingProblem,
     Job,
-    Vehicle,
+    VehicleConfig,
     Location,
     SolverType,
 )
@@ -165,7 +165,7 @@ class TestSmartSolverSelector:
     @pytest.fixture
     def simple_vehicle(self):
         """Create a simple vehicle."""
-        return Vehicle(
+        return VehicleConfig(
             id=uuid4(),
             capacity_kg=100.0,
             work_start=time(8, 0),
