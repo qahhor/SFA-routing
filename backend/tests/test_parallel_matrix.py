@@ -13,7 +13,7 @@ import numpy as np
 from unittest.mock import AsyncMock, MagicMock, patch
 from dataclasses import dataclass
 
-from app.services.parallel_matrix import (
+from app.services.caching.parallel_matrix import (
     ParallelMatrixComputer,
     MatrixCache,
     CachedParallelMatrixComputer,

@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from app.models.agent import Agent
 from app.models.client import Client, ClientCategory
-from app.services.weekly_planner import WeeklyPlanner
+from app.services.planning.weekly_planner import WeeklyPlanner
 
 
 class TestWeeklyPlanner:

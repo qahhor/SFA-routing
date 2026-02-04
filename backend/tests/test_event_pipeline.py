@@ -16,7 +16,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-from app.services.event_pipeline import (
+from app.services.realtime.event_pipeline import (
     EventType,
     EventPriority,
     RoutingEvent,

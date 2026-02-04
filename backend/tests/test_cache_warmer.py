@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import date, time
 from uuid import uuid4
 
-from app.services.cache_warmer import CacheWarmer
+from app.services.caching.cache_warmer import CacheWarmer
 
 
 class MockAgent:

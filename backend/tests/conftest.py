@@ -185,7 +185,7 @@ def sample_coordinates():
 @pytest.fixture
 def sample_routing_jobs(sample_coordinates):
     """Sample routing jobs for solver tests."""
-    from app.services.solver_interface import Job, Location
+    from app.services.solvers.solver_interface import Job, Location
 
     return [
         Job(
@@ -206,16 +206,16 @@ def sample_routing_jobs(sample_coordinates):
 def sample_routing_vehicles():
     """Sample vehicles for solver tests."""
     from datetime import time
-    from app.services.solver_interface import Vehicle
+    from app.services.solvers.solver_interface import VehicleConfig
 
     return [
-        Vehicle(
+        VehicleConfig(
             id=uuid4(),
             capacity_kg=100.0,
             work_start=time(8, 0),
             work_end=time(18, 0),
         ),
-        Vehicle(
+        VehicleConfig(
             id=uuid4(),
             capacity_kg=80.0,
             work_start=time(8, 0),

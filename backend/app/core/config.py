@@ -16,9 +16,15 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.2.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "development"  # development, staging, production
+    LOG_LEVEL: str = "INFO"
 
     # API
     API_V1_PREFIX: str = "/api/v1"
+
+    # PostgreSQL container settings (used by docker-compose)
+    POSTGRES_USER: str = "routeuser"
+    POSTGRES_PASSWORD: str = "routepass"
+    POSTGRES_DB: str = "routes"
 
     # Database (R8: Optimized connection pool)
     DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost:5432/routes"
@@ -101,6 +107,33 @@ class Settings(BaseSettings):
     API_CLIENT_FREE_RATE_LIMIT: int = 10
     API_CLIENT_FREE_MAX_POINTS: int = 50
     API_CLIENT_FREE_MONTHLY_QUOTA: int = 1000
+    API_CLIENT_STANDARD_RATE_LIMIT: int = 60
+    API_CLIENT_STANDARD_MAX_POINTS: int = 200
+    API_CLIENT_STANDARD_MONTHLY_QUOTA: int = 10000
+    API_CLIENT_PREMIUM_RATE_LIMIT: int = 300
+    API_CLIENT_PREMIUM_MAX_POINTS: int = 1000
+    API_CLIENT_PREMIUM_MONTHLY_QUOTA: int = 100000
+
+    # Celery
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
+    CELERY_TASK_ALWAYS_EAGER: bool = False  # Set True for testing
+
+    # Solver settings
+    SOLVER_DEFAULT: str = "auto"  # auto, vroom, ortools, genetic, greedy
+
+    # Genetic Algorithm settings
+    GA_POPULATION_SIZE: int = 100
+    GA_GENERATIONS: int = 500
+    GA_MUTATION_RATE: float = 0.15
+    GA_ELITE_SIZE: int = 5
+
+    # Geo Security
+    GEO_ANONYMIZATION_LEVEL: str = "none"  # none, low, medium, high
+
+    # WebSocket settings
+    WS_HEARTBEAT_INTERVAL: int = 30  # seconds
+    WS_MAX_CONNECTIONS_PER_AGENT: int = 5
 
     # Planning defaults
     DEFAULT_WORK_START: str = "09:00"
